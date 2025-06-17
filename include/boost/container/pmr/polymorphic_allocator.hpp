@@ -56,7 +56,7 @@ class polymorphic_allocator
    //! <b>Notes</b>: This constructor provides an implicit conversion from memory_resource*.
    polymorphic_allocator(memory_resource* r) BOOST_NOEXCEPT
       : m_resource(r)
-   {  BOOST_ASSERT(r != 0);  }
+   {  BOOST_ASSERT(r != nullptr);  }
 
    //! <b>Effects</b>: Sets m_resource to
    //!   other.resource().
