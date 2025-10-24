@@ -209,6 +209,16 @@ bool vector_copyable_only(MyBoostVector &boostvector, MyStdVector &stdvector, bo
          ::boost::movelib::make_unique<MyBoostVector>(boostvectorp->begin(), boostvectorp->end());
       if(!test::CheckEqualContainers(*boostvectorp2, *stdvectorp)) return false;
    }
+   {  //Vector(It, It), input_iterator
+      ::boost::movelib::unique_ptr<MyStdVector> const stdvectorp =
+         ::boost::movelib::make_unique<MyStdVector>(100u);
+      ::boost::movelib::unique_ptr<MyBoostVector> const boostvectorp =
+         ::boost::movelib::make_unique<MyBoostVector>(100u);
+      ::boost::movelib::unique_ptr<MyBoostVector> const boostvectorp2 =
+         ::boost::movelib::make_unique<MyBoostVector>( make_input_from_forward_iterator(boostvectorp->begin())
+                                                     , make_input_from_forward_iterator(boostvectorp->end()));
+      if(!test::CheckEqualContainers(*boostvectorp2, *stdvectorp)) return false;
+   }
    {  //Vector(It, It, alloc)
       ::boost::movelib::unique_ptr<MyStdVector> const stdvectorp =
          ::boost::movelib::make_unique<MyStdVector>(100u);
@@ -216,6 +226,17 @@ bool vector_copyable_only(MyBoostVector &boostvector, MyStdVector &stdvector, bo
          ::boost::movelib::make_unique<MyBoostVector>(100u);
       ::boost::movelib::unique_ptr<MyBoostVector> const boostvectorp2 =
          ::boost::movelib::make_unique<MyBoostVector>(boostvectorp->begin(), boostvectorp->end(), typename MyBoostVector::allocator_type());
+      if(!test::CheckEqualContainers(*boostvectorp2, *stdvectorp)) return false;
+   }
+   {  //Vector(It, It, alloc), input_iterator
+      ::boost::movelib::unique_ptr<MyStdVector> const stdvectorp =
+         ::boost::movelib::make_unique<MyStdVector>(100u);
+      ::boost::movelib::unique_ptr<MyBoostVector> const boostvectorp =
+         ::boost::movelib::make_unique<MyBoostVector>(100u);
+      ::boost::movelib::unique_ptr<MyBoostVector> const boostvectorp2 =
+         ::boost::movelib::make_unique<MyBoostVector>( make_input_from_forward_iterator(boostvectorp->begin())
+                                                     , make_input_from_forward_iterator(boostvectorp->end())
+                                                     , typename MyBoostVector::allocator_type());
       if(!test::CheckEqualContainers(*boostvectorp2, *stdvectorp)) return false;
    }
    {  //resize(n, T)
@@ -365,6 +386,38 @@ int vector_move_assignable_only(boost::container::dtl::true_type)
             boostvector.erase(boostvector.begin());
             stdvector.erase(stdvector.begin());
          }
+         if(!test::CheckEqualContainers(boostvector, stdvector)) return 1;
+      }
+      {
+         //Initialize values
+         IntType aux_vect[50];
+         for(int i = 0; i < 50; ++i){
+            aux_vect[i] = -1;
+         }
+         int aux_vect2[50];
+         for(int i = 0; i < 50; ++i){
+            aux_vect2[i] = -1;
+         }
+         typename MyBoostVector::iterator insert_it =
+            boostvector.insert(boostvector.end()
+                           ,boost::make_move_iterator(&aux_vect[0])
+                           ,boost::make_move_iterator(aux_vect + 50));
+         if(boost::container::iterator_udistance(insert_it, boostvector.end()) != 50) return 1;
+         stdvector.insert(stdvector.end(), aux_vect2, aux_vect2 + 50);
+         if(!test::CheckEqualContainers(boostvector, stdvector)) return 1;
+
+         boostvector.erase(boostvector.begin(), boostvector.begin() + 5);
+         stdvector.erase(stdvector.begin(), stdvector.begin()+5);
+
+         boostvector.erase(boostvector.end() - 5, boostvector.end());
+         stdvector.erase(stdvector.end() - 5, stdvector.end());
+
+         boostvector.erase(boostvector.begin()+5, boostvector.begin() + 10);
+         stdvector.erase(stdvector.begin()+5, stdvector.begin()+10);
+
+         boostvector.erase(boostvector.end() - 10, boostvector.end()-5);
+         stdvector.erase(stdvector.end() - 10, stdvector.end()-5);
+
          if(!test::CheckEqualContainers(boostvector, stdvector)) return 1;
       }
       {

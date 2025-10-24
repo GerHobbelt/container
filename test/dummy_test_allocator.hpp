@@ -65,7 +65,7 @@ class simple_allocator
    void deallocate(T *ptr, std::size_t n) BOOST_NOEXCEPT_OR_NOTHROW
    {
       (void)n;
-      # if __cpp_sized_deallocation
+      # if defined(__cpp_sized_deallocation)
       ::operator delete((void*)ptr, n * sizeof(T));
       #else
       ::operator delete((void*)ptr);
@@ -187,7 +187,7 @@ class propagation_test_allocator
    void deallocate(T *ptr, std::size_t n) BOOST_NOEXCEPT_OR_NOTHROW
    {
       (void)n;
-      # if __cpp_sized_deallocation
+      # if defined(__cpp_sized_deallocation)
       ::operator delete((void*)ptr, n * sizeof(T));
       #else
       ::operator delete((void*)ptr);
@@ -239,6 +239,43 @@ unsigned int propagation_test_allocator< T
                                        , CopyOnPropagateOnContSwap
                                        , EqualIfEqualIds
                                        >::unique_id_ = 0;
+
+template<class T>
+class small_size_type_allocator
+{
+   public:
+	typedef T value_type;
+	typedef value_type* pointer;
+	typedef const value_type* const_pointer;
+	typedef unsigned short size_type;
+	typedef short difference_type;
+
+   small_size_type_allocator()
+   {}
+
+   template<class U>
+   small_size_type_allocator(const small_size_type_allocator<U>&)
+   {}
+
+	pointer allocate(size_type count)
+   {  return static_cast<value_type*>(::operator new(count * sizeof(value_type))); }
+
+	void deallocate(pointer ptr, size_type n)
+   {
+      (void)n;
+      # if defined(__cpp_sized_deallocation)
+      ::operator delete((void*)ptr, n * sizeof(value_type));
+      #else
+      ::operator delete((void*)ptr);
+      # endif
+   }
+
+   friend bool operator==(small_size_type_allocator const&, small_size_type_allocator const&) BOOST_NOEXCEPT
+   {  return true;   }
+
+   friend bool operator!=(small_size_type_allocator const& x, small_size_type_allocator const& y) BOOST_NOEXCEPT
+   {  return !(x == y);  }
+};
 
 
 }  //namespace test {
