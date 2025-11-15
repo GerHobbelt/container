@@ -19,6 +19,8 @@
 
 #include <boost/move/utility_core.hpp>
 #include <boost/container/detail/mpl.hpp>
+#include <boost/container/detail/algorithm.hpp>
+#include <boost/container/detail/compare_functors.hpp>
 #include <boost/move/utility_core.hpp>
 #include <boost/move/iterator.hpp>
 #include <boost/move/make_unique.hpp>
@@ -558,6 +560,39 @@ int vector_move_assignable_only(boost::container::dtl::true_type)
       boostvector.resize(100u);
       if(!test_nth_index_of(boostvector))
          return 1;
+
+      //test erase/erase_if
+      IntType aux_vect[50];
+      for(int i = 0; i < 50; ++i){
+         aux_vect[i] = i;
+      }
+      int aux_vect2[50];
+      for(int i = 0; i < 50; ++i){
+         aux_vect2[i] = i;
+      }
+
+      boostvector.clear();
+      stdvector.clear();
+      boostvector.insert(boostvector.end()
+                     ,boost::make_move_iterator(&aux_vect[0])
+                     ,boost::make_move_iterator(aux_vect + 50));
+      stdvector.insert(stdvector.end(), aux_vect2, aux_vect2 + 50);
+
+      //erase
+      if (1 != erase(boostvector, 25))
+         return 1;
+      if (0 != erase(boostvector, 25))
+         return 1;
+      stdvector.erase(boost::container::find(stdvector.begin(), stdvector.end(), 25));
+      if(!test::CheckEqualContainers(boostvector, stdvector)) return false;
+
+      //erase_if
+      if (1 != erase_if(boostvector, equal_to_value<int>(24)))
+         return 1;
+      if (0 != erase_if(boostvector, equal_to_value<int>(24)))
+         return 1;
+      stdvector.erase(boost::container::find(stdvector.begin(), stdvector.end(), 24));
+      if(!test::CheckEqualContainers(boostvector, stdvector)) return false;
    }
    return 0;
 }
@@ -626,8 +661,11 @@ int vector_test()
       if(!test::CheckEqualContainers(*boostvectorp2, *stdvectorp)) return 1;
    }
 
-   if (0 != vector_test_fully_propagable<MyBoostVector>
-         ( dtl::bool_< !allocator_traits<typename MyBoostVector::allocator_type>::is_partially_propagable::value >() ))   return 1;
+   typedef BOOST_INTRUSIVE_OBTAIN_TYPE_WITH_DEFAULT(boost::container::dtl::, MyBoostVector,
+      is_partially_propagable, dtl::false_type)
+         is_partially_propagable_t;
+
+   if (0 != vector_test_fully_propagable<MyBoostVector>( dtl::bool_< !is_partially_propagable_t::value >() ))   return 1;
 
    if (0 != vector_move_assignable_only< MyBoostVector>(dtl::bool_<boost::container::test::is_move_assignable<IntType>::value>()))
       return 1;

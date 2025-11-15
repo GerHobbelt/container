@@ -848,8 +848,7 @@ class flat_map
    //! to the element obtained while it is held in the node handle are invalidated, and pointers and
    //! references obtained to that element before it was extracted become valid.
    //!
-   //! Returns: The bool component is true if the insertion took place and false if the assignment
-   //!   took place. The iterator component is pointing at the element that was inserted or updated.
+   //! <b>Returns</b>: The returned iterator points to the map element whose key is equivalent to k.
    //!
    //! Complexity: Logarithmic in the size of the container in general, but amortized constant if
    //! the new element is inserted just before hint.
@@ -872,8 +871,7 @@ class flat_map
    //! to the element obtained while it is held in the node handle are invalidated, and pointers and
    //! references obtained to that element before it was extracted become valid.
    //!
-   //! Returns: The bool component is true if the insertion took place and false if the assignment
-   //!   took place. The iterator component is pointing at the element that was inserted or updated.
+   //! <b>Returns</b>: The returned iterator points to the map element whose key is equivalent to k.
    //!
    //! Complexity: Logarithmic in the size of the container in general, but amortized constant if
    //! the new element is inserted just before hint.
@@ -1335,7 +1333,7 @@ class flat_map
       !dtl::is_convertible<K BOOST_MOVE_I iterator>::value &&     //not convertible to iterator
       !dtl::is_convertible<K BOOST_MOVE_I const_iterator>::value  //not convertible to const_iterator
       BOOST_MOVE_I size_type>::type)
-      erase(const K& x)
+      erase(BOOST_FWD_REF(K) x)
    {  return m_flat_tree.erase_unique(x); }
 
    //! <b>Effects</b>: Erases all the elements in the range [first, last).
@@ -1716,6 +1714,15 @@ class flat_map
    }
    #endif   //#ifndef BOOST_CONTAINER_DOXYGEN_INVOKED
 };
+
+//! <b>Effects</b>: Erases all elements that satisfy the predicate pred from the container c.
+//!
+//! <b>Complexity</b>: Linear.
+template <class K, class M, class C, class A, class Pred>
+inline typename flat_map<K, M, C, A>::size_type erase_if(flat_map<K, M, C, A>& c, Pred pred)
+{
+   return container_erase_if(c, pred);
+}
 
 #ifndef BOOST_CONTAINER_NO_CXX17_CTAD
 
@@ -3073,6 +3080,15 @@ class flat_multimap
 #if defined(BOOST_GCC) && (BOOST_GCC >= 100000) && !defined(BOOST_CONTAINER_STD_PAIR_IS_MOVABLE)
 #pragma GCC pop_options
 #endif
+
+//! <b>Effects</b>: Erases all elements that satisfy the predicate pred from the container c.
+//!
+//! <b>Complexity</b>: Linear.
+template <class K, class M, class C, class A, class Pred>
+inline typename flat_multimap<K, M, C, A>::size_type erase_if(flat_multimap<K, M, C, A>& c, Pred pred)
+{
+   return container_erase_if(c, pred);
+}
 
 #ifndef BOOST_CONTAINER_NO_CXX17_CTAD
 
