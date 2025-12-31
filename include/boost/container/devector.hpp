@@ -12,6 +12,14 @@
 #ifndef BOOST_CONTAINER_DEVECTOR_HPP
 #define BOOST_CONTAINER_DEVECTOR_HPP
 
+#ifndef BOOST_CONFIG_HPP
+#  include <boost/config.hpp>
+#endif
+
+#if defined(BOOST_HAS_PRAGMA_ONCE)
+#  pragma once
+#endif
+
 #include <boost/container/detail/config_begin.hpp>
 #include <boost/container/detail/workaround.hpp>
 
@@ -721,19 +729,19 @@ class devector
     *
     * **Complexity**: Constant.
     */
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
     allocator_type get_allocator() const BOOST_NOEXCEPT
    {
       return static_cast<const allocator_type&>(m_);
    }
 
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
     const allocator_type &get_stored_allocator() const BOOST_NOEXCEPT
    {
       return static_cast<const allocator_type&>(m_);
    }
 
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
          allocator_type &get_stored_allocator() BOOST_NOEXCEPT
    {
       return static_cast<allocator_type&>(m_);
@@ -747,7 +755,7 @@ class devector
     *
     * **Complexity**: Constant.
     */
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
          iterator begin() BOOST_NOEXCEPT
    {
       return m_.buffer + m_.front_idx;
@@ -759,7 +767,7 @@ class devector
     *
     * **Complexity**: Constant.
     */
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
     const_iterator begin() const BOOST_NOEXCEPT
    {
       return m_.buffer + m_.front_idx;
@@ -770,7 +778,7 @@ class devector
     *
     * **Complexity**: Constant.
     */
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
          iterator end() BOOST_NOEXCEPT
    {
       return m_.buffer + m_.back_idx;
@@ -781,7 +789,7 @@ class devector
     *
     * **Complexity**: Constant.
     */
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
     const_iterator end() const BOOST_NOEXCEPT
    {
       return m_.buffer + m_.back_idx;
@@ -793,7 +801,7 @@ class devector
     *
     * **Complexity**: Constant.
     */
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
     reverse_iterator rbegin() BOOST_NOEXCEPT
    {
       return reverse_iterator(m_.buffer + m_.back_idx);
@@ -806,7 +814,7 @@ class devector
     *
     * **Complexity**: Constant.
     */
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
     const_reverse_iterator rbegin() const BOOST_NOEXCEPT
    {
       return const_reverse_iterator(m_.buffer + m_.back_idx);
@@ -818,7 +826,7 @@ class devector
     *
     * **Complexity**: Constant.
     */
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
     reverse_iterator rend() BOOST_NOEXCEPT
    {
       return reverse_iterator(m_.buffer + m_.front_idx);
@@ -830,7 +838,7 @@ class devector
     *
     * **Complexity**: Constant.
     */
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
     const_reverse_iterator rend() const BOOST_NOEXCEPT
    {
       return const_reverse_iterator(m_.buffer + m_.front_idx);
@@ -842,7 +850,7 @@ class devector
     *
     * **Complexity**: Constant.
     */
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
     const_iterator cbegin() const BOOST_NOEXCEPT
    {
       return m_.buffer + m_.front_idx;
@@ -865,7 +873,7 @@ class devector
     *
     * **Complexity**: Constant.
     */
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
     const_reverse_iterator crbegin() const BOOST_NOEXCEPT
    {
       return const_reverse_iterator(m_.buffer + m_.back_idx);
@@ -877,7 +885,7 @@ class devector
     *
     * **Complexity**: Constant.
     */
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
     const_reverse_iterator crend() const BOOST_NOEXCEPT
    {
       return const_reverse_iterator(m_.buffer + m_.front_idx);
@@ -890,7 +898,7 @@ class devector
     *
     * **Complexity**: Constant.
     */
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
     bool empty() const BOOST_NOEXCEPT
    {
       return m_.front_idx == m_.back_idx;
@@ -901,7 +909,7 @@ class devector
     *
     * **Complexity**: Constant.
     */
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
     size_type size() const BOOST_NOEXCEPT
    {
       return size_type(m_.back_idx - m_.front_idx);
@@ -912,7 +920,7 @@ class devector
     *
     * **Complexity**: Constant.
     */
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
     size_type max_size() const BOOST_NOEXCEPT
    {
       size_type alloc_max = allocator_traits_type::max_size(get_allocator_ref());
@@ -929,7 +937,7 @@ class devector
    * 
    * **Complexity**: Constant.
    */
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
    size_type capacity() const BOOST_NOEXCEPT
    {
       size_type const cap_reserve = m_.capacity/devector_min_free_fraction;
@@ -942,7 +950,7 @@ class devector
     *
     * **Complexity**: Constant.
     */
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
    size_type front_free_capacity() const BOOST_NOEXCEPT
    {
       return m_.front_idx;
@@ -954,7 +962,7 @@ class devector
     *
     * **Complexity**: Constant.
     */
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
     size_type back_free_capacity() const BOOST_NOEXCEPT
    {
       return size_type(m_.capacity - m_.back_idx);
@@ -1266,7 +1274,7 @@ class devector
     *
     * **Complexity**: Constant.
     */
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
    reference operator[](size_type n) BOOST_NOEXCEPT
    {
       BOOST_ASSERT(n < size());
@@ -1280,7 +1288,7 @@ class devector
     *
     * **Complexity**: Constant.
     */
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
    const_reference operator[](size_type n) const BOOST_NOEXCEPT
    {
       BOOST_ASSERT(n < size());
@@ -1298,7 +1306,7 @@ class devector
    //! <b>Complexity</b>: Constant.
    //!
    //! <b>Note</b>: Non-standard extension
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       iterator nth(size_type n) BOOST_NOEXCEPT_OR_NOTHROW
    {
       BOOST_ASSERT(n <= size());
@@ -1316,7 +1324,7 @@ class devector
    //! <b>Complexity</b>: Constant.
    //!
    //! <b>Note</b>: Non-standard extension
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       const_iterator nth(size_type n) const BOOST_NOEXCEPT_OR_NOTHROW
    {
       BOOST_ASSERT(n <= size());
@@ -1333,7 +1341,7 @@ class devector
    //! <b>Complexity</b>: Constant.
    //!
    //! <b>Note</b>: Non-standard extension
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       size_type index_of(iterator p) BOOST_NOEXCEPT_OR_NOTHROW
    {
       BOOST_ASSERT(p >= begin());
@@ -1351,7 +1359,7 @@ class devector
    //! <b>Complexity</b>: Constant.
    //!
    //! <b>Note</b>: Non-standard extension
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       size_type index_of(const_iterator p) const BOOST_NOEXCEPT_OR_NOTHROW
    {
       BOOST_ASSERT(p >= cbegin());
@@ -1366,7 +1374,7 @@ class devector
    *
    * **Complexity**: Constant.
    */
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       reference at(size_type n)
    {
       if (size() <= n)
@@ -1381,7 +1389,7 @@ class devector
    *
    * **Complexity**: Constant.
    */
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       const_reference at(size_type n) const
    {
       if (size() <= n)
@@ -1396,7 +1404,7 @@ class devector
    *
    * **Complexity**: Constant.
    */
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       reference front() BOOST_NOEXCEPT
    {
       BOOST_ASSERT(!empty());
@@ -1411,7 +1419,7 @@ class devector
    *
    * **Complexity**: Constant.
    */
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       const_reference front() const BOOST_NOEXCEPT
    {
       BOOST_ASSERT(!empty());
@@ -1426,7 +1434,7 @@ class devector
    *
    * **Complexity**: Constant.
    */
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       reference back() BOOST_NOEXCEPT
    {
       BOOST_ASSERT(!empty());
@@ -1441,7 +1449,7 @@ class devector
    *
    * **Complexity**: Constant.
    */
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       const_reference back() const BOOST_NOEXCEPT
    {
       BOOST_ASSERT(!empty());
@@ -1456,7 +1464,7 @@ class devector
    *
    * **Complexity**: Constant.
    */
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       T* data() BOOST_NOEXCEPT
    {
       return boost::movelib::to_raw_pointer(m_.buffer) + m_.front_idx;
@@ -1469,7 +1477,7 @@ class devector
    *
    * **Complexity**: Constant.
    */
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       const T* data() const BOOST_NOEXCEPT
    {
       return boost::movelib::to_raw_pointer(m_.buffer) + m_.front_idx;
@@ -2155,27 +2163,27 @@ class devector
       m_.front_idx = m_.back_idx = 0;
    }
 
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       friend bool operator==(const devector& x, const devector& y)
    {   return x.size() == y.size() && ::boost::container::algo_equal(x.begin(), x.end(), y.begin());   }
 
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       friend bool operator!=(const devector& x, const devector& y)
    {   return !(x == y); }
 
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       friend bool operator< (const devector& x, const devector& y)
    {   return boost::container::algo_lexicographical_compare(x.begin(), x.end(), y.begin(), y.end());   }
 
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       friend bool operator>(const devector& x, const devector& y)
    {   return y < x;   }
 
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       friend bool operator<=(const devector& x, const devector& y)
    {   return !(y < x);   }
 
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       friend bool operator>=(const devector& x, const devector& y)
    {   return !(x < y);   }
 
@@ -2255,13 +2263,13 @@ class devector
       }
    }
 
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
    size_type pos_to_index(const_iterator i) const 
    {
       return static_cast<size_type>(i - cbegin());
    }
 
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
    bool should_move_back(const_iterator i) const 
    {
       return static_cast<size_type>(this->pos_to_index(i)) >= this->size()/2u;

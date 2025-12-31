@@ -80,11 +80,18 @@
 #pragma GCC diagnostic pop
 #endif
 
-#endif   //#ifndef BOOST_CONTAINER_DOXYGEN_INVOKED
-
 namespace boost {
 namespace container {
 namespace dtl {
+
+template <class T>
+class allocator_traits_dummy
+{
+   public:
+   typedef T value_type;
+   T *allocate(std::size_t){ return 0;  }
+   void deallocate(T *, std::size_t){}
+};
 
 #if !defined(BOOST_NO_CXX11_VARIADIC_TEMPLATES)
 
@@ -184,8 +191,6 @@ construct_type(T* p, BOOST_FWD_REF(U) x, BOOST_FWD_REF(V) y)
 }
 
 }  //namespace dtl
-
-#ifndef BOOST_CONTAINER_DOXYGEN_INVOKED
 
 template<class T, class VoidAllocator, class Options>
 class small_vector_allocator;
@@ -418,6 +423,7 @@ struct allocator_traits
 
    //! <b>Returns</b>: <code>a.allocate(n)</code>
    //!
+   BOOST_CONTAINER_NODISCARD
    inline static pointer allocate(Allocator &a, size_type n)
    {  return a.allocate(n);  }
 
@@ -429,6 +435,7 @@ struct allocator_traits
 
    //! <b>Effects</b>: calls <code>a.allocate(n, p)</code> if that call is well-formed;
    //! otherwise, invokes <code>a.allocate(n)</code>
+   BOOST_CONTAINER_NODISCARD
    inline static pointer allocate(Allocator &a, size_type n, const_void_pointer p)
    {
       const bool value = boost::container::dtl::
@@ -453,6 +460,7 @@ struct allocator_traits
 
    //! <b>Returns</b>: <code>a.max_size()</code> if that expression is well-formed; otherwise,
    //! <code>numeric_limits<size_type>::max()</code>.
+   BOOST_CONTAINER_NODISCARD
    inline static size_type max_size(const Allocator &a) BOOST_NOEXCEPT_OR_NOTHROW
    {
       const bool value = allocator_traits_detail::has_max_size<Allocator, size_type (Allocator::*)() const>::value;

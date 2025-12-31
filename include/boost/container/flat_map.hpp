@@ -49,6 +49,8 @@
 #include <initializer_list>
 #endif
 
+#ifndef BOOST_CONTAINER_DOXYGEN_INVOKED
+
 #if !defined(BOOST_NO_CXX11_RVALUE_REFERENCES)
 #define BOOST_CONTAINER_STD_PAIR_IS_MOVABLE
 #endif
@@ -63,6 +65,8 @@
 #pragma GCC push_options
 #pragma GCC optimize("no-strict-aliasing")
 #endif
+
+#endif   //#ifndef BOOST_CONTAINER_DOXYGEN_INVOKED
 
 namespace boost {
 namespace container {
@@ -87,7 +91,7 @@ template<class D>
 BOOST_CONTAINER_FORCEINLINE static D force_copy(D s)
 {  return s; }
 
-#else //!BOOST_CONTAINER_DOXYGEN_INVOKED
+#else //!BOOST_CONTAINER_STD_PAIR_IS_MOVABLE
 
 template<class D, class S>
 BOOST_CONTAINER_FORCEINLINE static D &force(S &s)
@@ -104,7 +108,7 @@ BOOST_CONTAINER_FORCEINLINE static D force_copy(const S &s)
    D ret_val(*vp);
    return ret_val;
 }
-#endif   //BOOST_CONTAINER_DOXYGEN_INVOKED
+#endif   //BOOST_CONTAINER_STD_PAIR_IS_MOVABLE
 
 }  //namespace dtl{
 
@@ -550,7 +554,7 @@ class flat_map
    //!   was passed to the object's constructor.
    //!
    //! <b>Complexity</b>: Constant.
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       allocator_type get_allocator() const BOOST_NOEXCEPT_OR_NOTHROW
       { return dtl::force_copy<allocator_type>(m_flat_tree.get_allocator()); }
 
@@ -561,7 +565,7 @@ class flat_map
    //! <b>Complexity</b>: Constant.
    //!
    //! <b>Note</b>: Non-standard extension.
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       get_stored_allocator_noconst_return_t get_stored_allocator() BOOST_NOEXCEPT_OR_NOTHROW
    {
       impl_get_stored_allocator_noconst_return_t r = m_flat_tree.get_stored_allocator();
@@ -575,7 +579,7 @@ class flat_map
    //! <b>Complexity</b>: Constant.
    //!
    //! <b>Note</b>: Non-standard extension.
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       get_stored_allocator_const_return_t get_stored_allocator() const BOOST_NOEXCEPT_OR_NOTHROW
    {
       impl_get_stored_allocator_const_return_t r = m_flat_tree.get_stored_allocator();
@@ -593,7 +597,7 @@ class flat_map
    //! <b>Throws</b>: Nothing.
    //!
    //! <b>Complexity</b>: Constant.
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       iterator begin() BOOST_NOEXCEPT_OR_NOTHROW
       { return dtl::force_copy<iterator>(m_flat_tree.begin()); }
 
@@ -602,7 +606,7 @@ class flat_map
    //! <b>Throws</b>: Nothing.
    //!
    //! <b>Complexity</b>: Constant.
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       const_iterator begin() const BOOST_NOEXCEPT_OR_NOTHROW
       { return dtl::force_copy<const_iterator>(m_flat_tree.begin()); }
 
@@ -611,7 +615,7 @@ class flat_map
    //! <b>Throws</b>: Nothing.
    //!
    //! <b>Complexity</b>: Constant.
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       iterator end() BOOST_NOEXCEPT_OR_NOTHROW
       { return dtl::force_copy<iterator>(m_flat_tree.end()); }
 
@@ -620,7 +624,7 @@ class flat_map
    //! <b>Throws</b>: Nothing.
    //!
    //! <b>Complexity</b>: Constant.
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       const_iterator end() const BOOST_NOEXCEPT_OR_NOTHROW
       { return dtl::force_copy<const_iterator>(m_flat_tree.end()); }
 
@@ -630,7 +634,7 @@ class flat_map
    //! <b>Throws</b>: Nothing.
    //!
    //! <b>Complexity</b>: Constant.
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       reverse_iterator rbegin() BOOST_NOEXCEPT_OR_NOTHROW
       { return dtl::force_copy<reverse_iterator>(m_flat_tree.rbegin()); }
 
@@ -640,7 +644,7 @@ class flat_map
    //! <b>Throws</b>: Nothing.
    //!
    //! <b>Complexity</b>: Constant.
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       const_reverse_iterator rbegin() const BOOST_NOEXCEPT_OR_NOTHROW
       { return dtl::force_copy<const_reverse_iterator>(m_flat_tree.rbegin()); }
 
@@ -650,7 +654,7 @@ class flat_map
    //! <b>Throws</b>: Nothing.
    //!
    //! <b>Complexity</b>: Constant.
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       reverse_iterator rend() BOOST_NOEXCEPT_OR_NOTHROW
       { return dtl::force_copy<reverse_iterator>(m_flat_tree.rend()); }
 
@@ -660,7 +664,7 @@ class flat_map
    //! <b>Throws</b>: Nothing.
    //!
    //! <b>Complexity</b>: Constant.
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       const_reverse_iterator rend() const BOOST_NOEXCEPT_OR_NOTHROW
       { return dtl::force_copy<const_reverse_iterator>(m_flat_tree.rend()); }
 
@@ -669,7 +673,7 @@ class flat_map
    //! <b>Throws</b>: Nothing.
    //!
    //! <b>Complexity</b>: Constant.
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       const_iterator cbegin() const BOOST_NOEXCEPT_OR_NOTHROW
       { return dtl::force_copy<const_iterator>(m_flat_tree.cbegin()); }
 
@@ -678,7 +682,7 @@ class flat_map
    //! <b>Throws</b>: Nothing.
    //!
    //! <b>Complexity</b>: Constant.
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       const_iterator cend() const BOOST_NOEXCEPT_OR_NOTHROW
       { return dtl::force_copy<const_iterator>(m_flat_tree.cend()); }
 
@@ -688,7 +692,7 @@ class flat_map
    //! <b>Throws</b>: Nothing.
    //!
    //! <b>Complexity</b>: Constant.
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       const_reverse_iterator crbegin() const BOOST_NOEXCEPT_OR_NOTHROW
       { return dtl::force_copy<const_reverse_iterator>(m_flat_tree.crbegin()); }
 
@@ -698,7 +702,7 @@ class flat_map
    //! <b>Throws</b>: Nothing.
    //!
    //! <b>Complexity</b>: Constant.
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       const_reverse_iterator crend() const BOOST_NOEXCEPT_OR_NOTHROW
       { return dtl::force_copy<const_reverse_iterator>(m_flat_tree.crend()); }
 
@@ -713,7 +717,7 @@ class flat_map
    //! <b>Throws</b>: Nothing.
    //!
    //! <b>Complexity</b>: Constant.
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       bool empty() const BOOST_NOEXCEPT_OR_NOTHROW
       { return m_flat_tree.empty(); }
 
@@ -722,7 +726,7 @@ class flat_map
    //! <b>Throws</b>: Nothing.
    //!
    //! <b>Complexity</b>: Constant.
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       size_type size() const BOOST_NOEXCEPT_OR_NOTHROW
       { return m_flat_tree.size(); }
 
@@ -731,7 +735,7 @@ class flat_map
    //! <b>Throws</b>: Nothing.
    //!
    //! <b>Complexity</b>: Constant.
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       size_type max_size() const BOOST_NOEXCEPT_OR_NOTHROW
       { return m_flat_tree.max_size(); }
 
@@ -741,7 +745,7 @@ class flat_map
    //! <b>Throws</b>: Nothing.
    //!
    //! <b>Complexity</b>: Constant.
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       size_type capacity() const BOOST_NOEXCEPT_OR_NOTHROW
       { return m_flat_tree.capacity(); }
 
@@ -773,26 +777,43 @@ class flat_map
    //
    //////////////////////////////////////////////
 
-   #if defined(BOOST_CONTAINER_DOXYGEN_INVOKED)
-   //! Effects: If there is no key equivalent to x in the flat_map, inserts
-   //!   value_type(x, T()) into the flat_map.
+   #if defined(BOOST_CONTAINER_DOXYGEN_INVOKED) || (defined(BOOST_CXX_VERSION) &&(BOOST_CXX_VERSION >= 201103L))
+   //! Effects: If there is no key equivalent to k in the flat_map, inserts
+   //!   value_type(k, T()) into the flat_map.
    //!
-   //! Returns: A reference to the mapped_type corresponding to x in *this.
+   //! Returns: A reference to the mapped_type corresponding to k in *this.
    //!
    //! Complexity: Logarithmic search time plus linear insertion time in case no equivalent key is present.
-   mapped_type &operator[](const key_type& k);
+   mapped_type &operator[](const key_type& k)
+   {  return this->priv_subscript(k); }
 
-   //! Effects: If there is no key equivalent to x in the flat_map, inserts
-   //! value_type(move(x), T()) into the flat_map (the key is move-constructed)
+   //! Effects: If there is no key equivalent to k in the flat_map, inserts
+   //! value_type(move(k), T()) into the flat_map (the key is move-constructed)
    //!
-   //! Returns: A reference to the mapped_type corresponding to x in *this.
+   //! Returns: A reference to the mapped_type corresponding to k in *this.
    //!
    //! Complexity: Logarithmic search time plus linear insertion time in case no equivalent key is present.
-   mapped_type &operator[](key_type &&k);
-   #elif defined(BOOST_MOVE_HELPERS_RETURN_SFINAE_BROKEN)
-      //in compilers like GCC 3.4, we can't catch temporaries
-      inline mapped_type& operator[](const key_type &k)         {  return this->priv_subscript(k);  }
-      inline mapped_type& operator[](BOOST_RV_REF(key_type) k)  {  return this->priv_subscript(::boost::move(k));  }
+   mapped_type &operator[](key_type &&k)
+   {  return this->priv_subscript(boost::move(k)); }
+
+   //! <b>Precondition</b>: This overload is available only if key_compare::is_transparent exists.
+   //!
+   //! <b>Effects</b>: If there is no key equivalent to x in the map, inserts
+   //! value_type(boost::forward<K>(k), T()) into the map
+   //!
+   //! <b>Returns</b>: A reference to the mapped_type corresponding to k in *this.
+   //!
+   //! <b>Complexity</b>: Logarithmic search time plus linear insertion time in case no equivalent key is present
+   template <class K>
+   inline BOOST_CONTAINER_DOC1ST
+         ( mapped_type&
+         , typename dtl::enable_if_transparent< key_compare
+                                                BOOST_MOVE_I K
+                                                BOOST_MOVE_I mapped_type&
+                                              >::type)  //transparent
+      operator[](K &&k)
+   {  return this->priv_subscript(boost::forward<K>(k)); }
+
    #else
       BOOST_MOVE_CONVERSION_AWARE_CATCH( operator[] , key_type, mapped_type&, this->priv_subscript)
    #endif
@@ -801,10 +822,6 @@ class flat_map
    //! to the mapped_type corresponding to the key k. If the key does not exist, inserts the new value
    //! as if by insert, constructing it from value_type(k, forward<M>(obj)).
    //! 
-   //! No iterators or references are invalidated. If the insertion is successful, pointers and references
-   //! to the element obtained while it is held in the node handle are invalidated, and pointers and
-   //! references obtained to that element before it was extracted become valid.
-   //!
    //! Returns: The bool component is true if the insertion took place and false if the assignment
    //!   took place. The iterator component is pointing at the element that was inserted or updated.
    //!
@@ -813,19 +830,13 @@ class flat_map
    inline std::pair<iterator, bool> insert_or_assign(const key_type& k, BOOST_FWD_REF(M) obj)
    {
       return dtl::force_copy< std::pair<iterator, bool> >
-         (this->m_flat_tree.insert_or_assign
-            ( impl_const_iterator(), k, ::boost::forward<M>(obj))
-         );
+         (this->m_flat_tree.insert_or_assign(k, ::boost::forward<M>(obj)));
    }
 
    //! Effects: If a key equivalent to k already exists in the container, assigns forward<M>(obj)
    //! to the mapped_type corresponding to the key k. If the key does not exist, inserts the new value
    //! as if by insert, constructing it from value_type(k, move(obj)).
    //! 
-   //! No iterators or references are invalidated. If the insertion is successful, pointers and references
-   //! to the element obtained while it is held in the node handle are invalidated, and pointers and
-   //! references obtained to that element before it was extracted become valid.
-   //!
    //! Returns: The bool component is true if the insertion took place and false if the assignment
    //!   took place. The iterator component is pointing at the element that was inserted or updated.
    //!
@@ -834,9 +845,32 @@ class flat_map
    inline std::pair<iterator, bool> insert_or_assign(BOOST_RV_REF(key_type) k, BOOST_FWD_REF(M) obj)
    {
       return dtl::force_copy< std::pair<iterator, bool> >
-         (this->m_flat_tree.insert_or_assign
-            ( impl_const_iterator(), ::boost::move(k), ::boost::forward<M>(obj))
-         );
+         (this->m_flat_tree.insert_or_assign(::boost::move(k), ::boost::forward<M>(obj)));
+   }
+
+   //! <b>Requires</b>: This overload is available only if key_compare::is_transparent exists.
+   //!
+   //! <b>Effects</b>: If a key equivalent to k already exists in the container, assigns forward<M>(obj)
+   //! to the mapped_type corresponding to the key k. If the key does not exist, inserts the new value
+   //! as if by insert, constructing it from value_type(k, move(obj)).
+   //! 
+   //! <b>Returns</b>: The bool component is true if the insertion took place and false if the assignment
+   //!   took place. The iterator component is pointing at the element that was inserted or updated.
+   //!
+   //! <b>Complexity</b>: Logarithmic in the size of the container.
+   template <class K, class M>
+   inline BOOST_CONTAINER_DOC1ST
+      (std::pair<iterator BOOST_MOVE_I bool>
+         , typename dtl::enable_if_c<
+               dtl::is_transparent<key_compare>::value &&                  //transparent
+               !dtl::is_convertible<K BOOST_MOVE_I iterator>::value &&     //not convertible to iterator
+               !dtl::is_convertible<K BOOST_MOVE_I const_iterator>::value  //not convertible to const_iterator
+         BOOST_MOVE_I std::pair<iterator BOOST_MOVE_I bool>
+       >::type)
+      insert_or_assign(BOOST_FWD_REF(K) k, BOOST_FWD_REF(M) obj)
+   {
+      return dtl::force_copy< std::pair<iterator, bool> >
+         (this->m_flat_tree.insert_or_assign(::boost::forward<K>(k), ::boost::forward<M>(obj)));
    }
 
    //! Effects: If a key equivalent to k already exists in the container, assigns forward<M>(obj)
@@ -844,10 +878,6 @@ class flat_map
    //! as if by insert, constructing it from value_type(k, forward<M>(obj)) and the new element
    //! to the container as close as possible to the position just before hint.
    //! 
-   //! No iterators or references are invalidated. If the insertion is successful, pointers and references
-   //! to the element obtained while it is held in the node handle are invalidated, and pointers and
-   //! references obtained to that element before it was extracted become valid.
-   //!
    //! <b>Returns</b>: The returned iterator points to the map element whose key is equivalent to k.
    //!
    //! Complexity: Logarithmic in the size of the container in general, but amortized constant if
@@ -867,10 +897,6 @@ class flat_map
    //! as if by insert, constructing it from value_type(k, move(obj)) and the new element
    //! to the container as close as possible to the position just before hint.
    //! 
-   //! No iterators or references are invalidated. If the insertion is successful, pointers and references
-   //! to the element obtained while it is held in the node handle are invalidated, and pointers and
-   //! references obtained to that element before it was extracted become valid.
-   //!
    //! <b>Returns</b>: The returned iterator points to the map element whose key is equivalent to k.
    //!
    //! Complexity: Logarithmic in the size of the container in general, but amortized constant if
@@ -885,23 +911,50 @@ class flat_map
          );
    }
 
+   //! <b>Requires</b>: This overload is available only if key_compare::is_transparent exists.
+   //!
+   //! <b>Effects</b>: If a key equivalent to k already exists in the container, assigns forward<M>(obj)
+   //! to the mapped_type corresponding to the key k. If the key does not exist, inserts the new value
+   //! as if by insert, constructing it from value_type(k, move(obj)) and the new element
+   //! to the container as close as possible to the position just before hint.
+   //! 
+   //! <b>Returns</b>: The returned iterator points to the map element whose key is equivalent to k.
+   //!
+   //! <b>Complexity</b>: Logarithmic in the size of the container in general, but amortized constant if
+   //! the new element is inserted just before hint.
+   template <class K, class M>
+   BOOST_CONTAINER_DOC1ST
+      ( iterator
+      , typename dtl::enable_if_transparent< key_compare
+                                             BOOST_MOVE_I K
+                                             BOOST_MOVE_I iterator
+                                           >::type)  //transparent
+      insert_or_assign(const_iterator hint, BOOST_FWD_REF(K) k, BOOST_FWD_REF(M) obj)
+   {
+      return dtl::force_copy<iterator>
+         (this->m_flat_tree.insert_or_assign
+            ( dtl::force_copy<impl_const_iterator>(hint)
+            , ::boost::forward<K>(k), ::boost::forward<M>(obj)).first
+         );
+   }
+
    //! @copydoc ::boost::container::flat_set::nth(size_type)
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       iterator nth(size_type n) BOOST_NOEXCEPT_OR_NOTHROW
    {  return dtl::force_copy<iterator>(m_flat_tree.nth(n));  }
 
    //! @copydoc ::boost::container::flat_set::nth(size_type) const
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       const_iterator nth(size_type n) const BOOST_NOEXCEPT_OR_NOTHROW
    {  return dtl::force_copy<const_iterator>(m_flat_tree.nth(n));  }
 
    //! @copydoc ::boost::container::flat_set::index_of(iterator)
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       size_type index_of(iterator p) BOOST_NOEXCEPT_OR_NOTHROW
    {  return m_flat_tree.index_of(dtl::force_copy<impl_iterator>(p));  }
 
    //! @copydoc ::boost::container::flat_set::index_of(const_iterator) const
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       size_type index_of(const_iterator p) const BOOST_NOEXCEPT_OR_NOTHROW
    {  return m_flat_tree.index_of(dtl::force_copy<impl_const_iterator>(p));  }
 
@@ -910,7 +963,7 @@ class flat_map
    //! Throws: An exception object of type out_of_range if no such element is present.
    //!
    //! Complexity: logarithmic.
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD T& at(const key_type& k)
+   BOOST_CONTAINER_NODISCARD T& at(const key_type& k)
    {
       iterator i = this->find(k);
       if(i == this->end()){
@@ -924,10 +977,58 @@ class flat_map
    //! Throws: An exception object of type out_of_range if no such element is present.
    //!
    //! Complexity: logarithmic.
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD const T& at(const key_type& k) const
+   BOOST_CONTAINER_NODISCARD const T& at(const key_type& k) const
    {
       const_iterator i = this->find(k);
+      if(i == this->cend()){
+         throw_out_of_range("flat_map::at key not found");
+      }
+      return i->second;
+   }
+
+   //! <b>Precondition</b>: This overload is available only if key_compare::is_transparent exists.
+   //!
+   //! Returns: A reference to the element whose key is equivalent to x.
+   //!
+   //! Throws: An exception object of type out_of_range if no such element is present.
+   //!
+   //! Complexity: logarithmic.
+   template<class K>
+   BOOST_CONTAINER_NODISCARD
+      BOOST_CONTAINER_DOC1ST
+         ( T&
+         , typename dtl::enable_if_transparent< key_compare
+                                                BOOST_MOVE_I K
+                                                BOOST_MOVE_I T&
+                                              >::type)  //transparent
+      at(const K& k)
+   {
+      iterator i = this->find(k);
       if(i == this->end()){
+         throw_out_of_range("flat_map::at key not found");
+      }
+      return i->second;
+   }
+
+   //! <b>Precondition</b>: This overload is available only if key_compare::is_transparent exists.
+   //!
+   //! Returns: A reference to the element whose key is equivalent to x.
+   //!
+   //! Throws: An exception object of type out_of_range if no such element is present.
+   //!
+   //! Complexity: logarithmic.
+   template<class K>
+   BOOST_CONTAINER_NODISCARD
+      BOOST_CONTAINER_DOC1ST
+         ( const T&
+         , typename dtl::enable_if_transparent< key_compare
+                                                BOOST_MOVE_I K
+                                                BOOST_MOVE_I const T&
+                                              >::type)  //transparent
+      at(const K& k) const
+   {
+      const_iterator i = this->find(k);
+      if(i == this->cend()){
          throw_out_of_range("flat_map::at key not found");
       }
       return i->second;
@@ -992,7 +1093,7 @@ class flat_map
    inline std::pair<iterator, bool> try_emplace(const key_type& k, BOOST_FWD_REF(Args)... args)
    {
       return dtl::force_copy< std::pair<iterator, bool> >(
-         m_flat_tree.try_emplace(impl_const_iterator(), k, boost::forward<Args>(args)...));
+         m_flat_tree.try_emplace(k, boost::forward<Args>(args)...));
    }
 
    //! <b>Requires</b>: value_type shall be EmplaceConstructible into map from piecewise_construct, 
@@ -1028,7 +1129,7 @@ class flat_map
    inline std::pair<iterator, bool> try_emplace(BOOST_RV_REF(key_type) k, BOOST_FWD_REF(Args)... args)
    {
       return dtl::force_copy< std::pair<iterator, bool> >
-         (m_flat_tree.try_emplace(impl_const_iterator(), boost::move(k), boost::forward<Args>(args)...));
+         (m_flat_tree.try_emplace(boost::move(k), boost::forward<Args>(args)...));
    }
 
    //! <b>Requires</b>: value_type shall be EmplaceConstructible into map from piecewise_construct, 
@@ -1048,6 +1149,61 @@ class flat_map
       return dtl::force_copy<iterator>
          (m_flat_tree.try_emplace(dtl::force_copy
             <impl_const_iterator>(hint), boost::move(k), boost::forward<Args>(args)...).first);
+   }
+
+   //! <b>Precondition</b>: This overload is available only if key_compare::is_transparent exists.
+   //!
+   //! <b>Requires</b>: value_type shall be EmplaceConstructible into map from piecewise_construct, 
+   //! forward_as_tuple(move(k)), forward_as_tuple(forward<Args>(args)...).
+   //! 
+   //! <b>Effects</b>: If the map already contains an element whose key is equivalent to k, there is no effect. Otherwise
+   //! inserts an object of type value_type constructed with piecewise_construct, forward_as_tuple(move(k)),
+   //! forward_as_tuple(forward<Args>(args)...).
+   //! 
+   //! <b>Returns</b>: The bool component of the returned pair is true if and only if the
+   //! insertion took place. The returned iterator points to the map element whose key is equivalent to k.
+   //! 
+   //! <b>Complexity</b>: Logarithmic search time plus linear insertion time in case the key is not present.
+   template <class K, class... Args>
+   inline BOOST_CONTAINER_DOC1ST
+      (std::pair<iterator BOOST_MOVE_I bool>
+         , typename dtl::enable_if_c<
+         dtl::is_transparent<key_compare>::value &&                  //transparent
+         !dtl::is_convertible<K BOOST_MOVE_I iterator>::value &&     //not convertible to iterator
+         !dtl::is_convertible<K BOOST_MOVE_I const_iterator>::value  //not convertible to const_iterator
+         BOOST_MOVE_I std::pair<iterator BOOST_MOVE_I bool>
+       >::type)
+      try_emplace(BOOST_FWD_REF(K) k, BOOST_FWD_REF(Args)... args)
+   {
+      return dtl::force_copy< std::pair<iterator, bool> >
+         (m_flat_tree.try_emplace(boost::forward<K>(k), boost::forward<Args>(args)...));
+   }
+
+   //! <b>Precondition</b>: This overload is available only if key_compare::is_transparent exists.
+   //!
+   //! <b>Requires</b>: value_type shall be EmplaceConstructible into map from piecewise_construct, 
+   //! forward_as_tuple(move(k)), forward_as_tuple(forward<Args>(args)...).
+   //! 
+   //! <b>Effects</b>: If the map already contains an element whose key is equivalent to k, there is no effect. Otherwise
+   //! inserts an object of type value_type constructed with piecewise_construct, forward_as_tuple(move(k)),
+   //! forward_as_tuple(forward<Args>(args)...).
+   //! 
+   //! <b>Returns</b>: The returned iterator points to the map element whose key is equivalent to k.
+   //! 
+   //! <b>Complexity</b>: Logarithmic in general, but amortized constant if value
+   //!   is inserted right before p. Linear insertion time in case no equivalent key is present.
+   template <class K, class... Args>
+   inline BOOST_CONTAINER_DOC1ST
+      ( iterator
+      , typename dtl::enable_if_transparent< key_compare
+                                             BOOST_MOVE_I K
+                                             BOOST_MOVE_I iterator
+                                           >::type)  //transparent
+      try_emplace(const_iterator hint, BOOST_FWD_REF(K) k, BOOST_FWD_REF(Args)... args)
+   {
+      return dtl::force_copy<iterator>
+         (m_flat_tree.try_emplace(dtl::force_copy
+            <impl_const_iterator>(hint), boost::forward<K>(k), boost::forward<Args>(args)...).first);
    }
 
    #else // !defined(BOOST_NO_CXX11_VARIADIC_TEMPLATES)
@@ -1070,7 +1226,7 @@ class flat_map
    inline std::pair<iterator, bool> try_emplace(const key_type& k BOOST_MOVE_I##N BOOST_MOVE_UREF##N)\
    {\
       return dtl::force_copy< std::pair<iterator, bool> >\
-         (m_flat_tree.try_emplace(impl_const_iterator(), k BOOST_MOVE_I##N BOOST_MOVE_FWD##N));\
+         (m_flat_tree.try_emplace(k BOOST_MOVE_I##N BOOST_MOVE_FWD##N));\
    }\
    \
    BOOST_MOVE_TMPL_LT##N BOOST_MOVE_CLASS##N BOOST_MOVE_GT##N \
@@ -1082,13 +1238,38 @@ class flat_map
    inline std::pair<iterator, bool> try_emplace(BOOST_RV_REF(key_type) k BOOST_MOVE_I##N BOOST_MOVE_UREF##N)\
    {\
       return dtl::force_copy< std::pair<iterator, bool> >\
-         (m_flat_tree.try_emplace(impl_const_iterator(), boost::move(k) BOOST_MOVE_I##N BOOST_MOVE_FWD##N));\
+         (m_flat_tree.try_emplace(boost::move(k) BOOST_MOVE_I##N BOOST_MOVE_FWD##N));\
    }\
    \
    BOOST_MOVE_TMPL_LT##N BOOST_MOVE_CLASS##N BOOST_MOVE_GT##N \
    inline iterator try_emplace(const_iterator hint, BOOST_RV_REF(key_type) k BOOST_MOVE_I##N BOOST_MOVE_UREF##N)\
    {  return dtl::force_copy<iterator>(m_flat_tree.try_emplace\
       (dtl::force_copy<impl_const_iterator>(hint), boost::move(k) BOOST_MOVE_I##N BOOST_MOVE_FWD##N).first); }\
+   \
+   template <class K BOOST_MOVE_I##N BOOST_MOVE_CLASS##N> \
+          typename dtl::enable_if_c< \
+                                    dtl::is_transparent<key_compare>::value &&  \
+                                    !dtl::is_convertible<K BOOST_MOVE_I iterator>::value && \
+                                    !dtl::is_convertible<K BOOST_MOVE_I const_iterator>::value \
+                                    BOOST_MOVE_I std::pair<iterator BOOST_MOVE_I bool> \
+                                    >::type \
+      try_emplace(BOOST_FWD_REF(K) k BOOST_MOVE_I##N BOOST_MOVE_UREF##N) \
+   { \
+      return dtl::force_copy< std::pair<iterator BOOST_MOVE_I bool> > \
+         (m_flat_tree.try_emplace(boost::forward<K>(k) BOOST_MOVE_I##N BOOST_MOVE_FWD##N)); \
+   } \
+   \
+   template <class K BOOST_MOVE_I##N BOOST_MOVE_CLASS##N> \
+       typename dtl::enable_if_transparent< key_compare \
+                                             BOOST_MOVE_I K \
+                                             BOOST_MOVE_I iterator \
+                                           >::type \
+      try_emplace(const_iterator hint BOOST_MOVE_I BOOST_FWD_REF(K) k BOOST_MOVE_I##N BOOST_MOVE_UREF##N) \
+   { \
+      return dtl::force_copy<iterator> \
+         (m_flat_tree.try_emplace(dtl::force_copy \
+            <impl_const_iterator>(hint) BOOST_MOVE_I boost::forward<K>(k) BOOST_MOVE_I##N BOOST_MOVE_FWD##N).first); \
+   }
    //
    BOOST_MOVE_ITERATE_0TO9(BOOST_CONTAINER_FLAT_MAP_EMPLACE_CODE)
    #undef BOOST_CONTAINER_FLAT_MAP_EMPLACE_CODE
@@ -1213,7 +1394,7 @@ class flat_map
    //! <b>Note</b>: If an element is inserted it might invalidate elements.
    template <class InputIterator>
    inline void insert(InputIterator first, InputIterator last)
-   {  m_flat_tree.insert_unique(first, last);  }
+   {  m_flat_tree.insert_unique_range(first, last);  }
 
    //! <b>Requires</b>: first, last are not iterators into *this.
    //!
@@ -1231,7 +1412,7 @@ class flat_map
    //! <b>Note</b>: Non-standard extension.
    template <class InputIterator>
    inline void insert(ordered_unique_range_t, InputIterator first, InputIterator last)
-      {  m_flat_tree.insert_unique(ordered_unique_range, first, last); }
+      {  m_flat_tree.insert_unique_range(ordered_unique_range, first, last); }
 
 #if !defined(BOOST_NO_CXX11_HDR_INITIALIZER_LIST)
    //! <b>Effects</b>: inserts each element from the range [il.begin(), il.end()) if and only
@@ -1242,8 +1423,8 @@ class flat_map
    //! <b>Note</b>: If an element is inserted it might invalidate elements.
    inline void insert(std::initializer_list<value_type> il)
    {
-      m_flat_tree.insert_unique( dtl::force<impl_initializer_list>(il).begin()
-                               , dtl::force<impl_initializer_list>(il).end());
+      m_flat_tree.insert_unique_range( dtl::force<impl_initializer_list>(il).begin()
+                                     , dtl::force<impl_initializer_list>(il).end());
    }
 
    //! <b>Requires</b>: [il.begin(), il.end()) must be ordered according to the predicate and must be
@@ -1260,9 +1441,9 @@ class flat_map
    //! <b>Note</b>: Non-standard extension.
    inline void insert(ordered_unique_range_t, std::initializer_list<value_type> il)
    {
-      m_flat_tree.insert_unique(ordered_unique_range
-                               , dtl::force<impl_initializer_list>(il).begin()
-                               , dtl::force<impl_initializer_list>(il).end());
+      m_flat_tree.insert_unique_range(ordered_unique_range
+                                     , dtl::force<impl_initializer_list>(il).begin()
+                                     , dtl::force<impl_initializer_list>(il).end());
    }
 #endif
 
@@ -1310,9 +1491,9 @@ class flat_map
          (m_flat_tree.erase(dtl::force_copy<impl_const_iterator>(p)));
    }
 
-   //! <b>Effects</b>: If present, erases the element in the container with key equivalent to x.
+   //! <b>Effects</b>: If present, erases the elements in the container with key equivalent to x.
    //!
-   //! <b>Returns</b>: Returns the number of erased elements (0/1).
+   //! <b>Returns</b>: Returns the number of erased elements.
    //!
    //! <b>Complexity</b>: Logarithmic search time plus erasure time
    //!   linear to the elements with bigger keys.
@@ -1322,17 +1503,17 @@ class flat_map
    //! <b>Requires</b>: This overload is available only if
    //! key_compare::is_transparent exists.
    //!
-   //! <b>Effects</b>: If present, erases the element in the container with key equivalent to x.
+   //! <b>Effects</b>: If present, erases the elements in the container with key equivalent to x.
    //!
-   //! <b>Returns</b>: Returns the number of erased elements (0/1).
+   //! <b>Returns</b>: Returns the number of erased elements.
    template <class K>
    inline BOOST_CONTAINER_DOC1ST
-   (size_type
-      , typename dtl::enable_if_c<
-      dtl::is_transparent<key_compare>::value &&                  //transparent
-      !dtl::is_convertible<K BOOST_MOVE_I iterator>::value &&     //not convertible to iterator
-      !dtl::is_convertible<K BOOST_MOVE_I const_iterator>::value  //not convertible to const_iterator
-      BOOST_MOVE_I size_type>::type)
+      (size_type
+         , typename dtl::enable_if_c<
+         dtl::is_transparent<key_compare>::value &&                  //transparent
+         !dtl::is_convertible<K BOOST_MOVE_I iterator>::value &&     //not convertible to iterator
+         !dtl::is_convertible<K BOOST_MOVE_I const_iterator>::value  //not convertible to const_iterator
+         BOOST_MOVE_I size_type>::type)
       erase(BOOST_FWD_REF(K) x)
    {  return m_flat_tree.erase_unique(x); }
 
@@ -1379,7 +1560,7 @@ class flat_map
    //!   of which a was constructed.
    //!
    //! <b>Complexity</b>: Constant.
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       key_compare key_comp() const
       { return dtl::force_copy<key_compare>(m_flat_tree.key_comp()); }
 
@@ -1387,7 +1568,7 @@ class flat_map
    //!   of the comparison object.
    //!
    //! <b>Complexity</b>: Constant.
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       value_compare value_comp() const
       { return value_compare(dtl::force_copy<key_compare>(m_flat_tree.key_comp())); }
 
@@ -1401,7 +1582,7 @@ class flat_map
    //!   equivalent to x, or end() if such an element is not found.
    //!
    //! <b>Complexity</b>: Logarithmic.
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       iterator find(const key_type& x)
       { return dtl::force_copy<iterator>(m_flat_tree.find(x)); }
 
@@ -1409,7 +1590,7 @@ class flat_map
    //!   equivalent to x, or end() if such an element is not found.
    //!
    //! <b>Complexity</b>: Logarithmic.
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       const_iterator find(const key_type& x) const
       { return dtl::force_copy<const_iterator>(m_flat_tree.find(x)); }
 
@@ -1421,7 +1602,7 @@ class flat_map
    //!
    //! <b>Complexity</b>: Logarithmic.
    template<class K>
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       iterator find(const K& x)
       { return dtl::force_copy<iterator>(m_flat_tree.find(x)); }
 
@@ -1433,14 +1614,14 @@ class flat_map
    //!
    //! <b>Complexity</b>: Logarithmic.
    template<class K>
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       const_iterator find(const K& x) const
       { return dtl::force_copy<const_iterator>(m_flat_tree.find(x)); }
 
    //! <b>Returns</b>: The number of elements with key equivalent to x.
    //!
    //! <b>Complexity</b>: log(size())+count(k)
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       size_type count(const key_type& x) const
       {  return static_cast<size_type>(m_flat_tree.find(x) != m_flat_tree.end());  }
 
@@ -1451,7 +1632,7 @@ class flat_map
    //!
    //! <b>Complexity</b>: log(size())+count(k)
    template<class K>
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       size_type count(const K& x) const
       //Don't use find() != end optimization here as transparent comparators with key K might
       //return a different range than key_type (which can only return a single element range)
@@ -1461,7 +1642,7 @@ class flat_map
    //!   equivalent to key in the container, otherwise false.
    //!
    //! <b>Complexity</b>: log(size()).
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       bool contains(const key_type& x) const
       {  return m_flat_tree.find(x) != m_flat_tree.end();  }
 
@@ -1473,7 +1654,7 @@ class flat_map
    //!
    //! <b>Complexity</b>: log(size()).
    template<typename K>
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       bool contains(const K& x) const
       {  return m_flat_tree.find(x) != m_flat_tree.end();  }
 
@@ -1481,7 +1662,7 @@ class flat_map
    //!   than x, or end() if such an element is not found.
    //!
    //! <b>Complexity</b>: Logarithmic.
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       iterator lower_bound(const key_type& x)
       {  return dtl::force_copy<iterator>(m_flat_tree.lower_bound(x)); }
 
@@ -1489,7 +1670,7 @@ class flat_map
    //!   less than x, or end() if such an element is not found.
    //!
    //! <b>Complexity</b>: Logarithmic.
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       const_iterator lower_bound(const key_type& x) const
       {  return dtl::force_copy<const_iterator>(m_flat_tree.lower_bound(x)); }
 
@@ -1501,7 +1682,7 @@ class flat_map
    //!
    //! <b>Complexity</b>: Logarithmic.
    template<class K>
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       iterator lower_bound(const K& x)
       {  return dtl::force_copy<iterator>(m_flat_tree.lower_bound(x)); }
 
@@ -1513,7 +1694,7 @@ class flat_map
    //!
    //! <b>Complexity</b>: Logarithmic.
    template<class K>
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       const_iterator lower_bound(const K& x) const
       {  return dtl::force_copy<const_iterator>(m_flat_tree.lower_bound(x)); }
 
@@ -1521,7 +1702,7 @@ class flat_map
    //!   than x, or end() if such an element is not found.
    //!
    //! <b>Complexity</b>: Logarithmic.
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       iterator upper_bound(const key_type& x)
       {  return dtl::force_copy<iterator>(m_flat_tree.upper_bound(x)); }
 
@@ -1529,7 +1710,7 @@ class flat_map
    //!   greater than x, or end() if such an element is not found.
    //!
    //! <b>Complexity</b>: Logarithmic.
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       const_iterator upper_bound(const key_type& x) const
       {  return dtl::force_copy<const_iterator>(m_flat_tree.upper_bound(x)); }
 
@@ -1541,7 +1722,7 @@ class flat_map
    //!
    //! <b>Complexity</b>: Logarithmic.
    template<class K>
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       iterator upper_bound(const K& x)
       {  return dtl::force_copy<iterator>(m_flat_tree.upper_bound(x)); }
 
@@ -1553,21 +1734,21 @@ class flat_map
    //!
    //! <b>Complexity</b>: Logarithmic.
    template<class K>
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       const_iterator upper_bound(const K& x) const
       {  return dtl::force_copy<const_iterator>(m_flat_tree.upper_bound(x)); }
 
    //! <b>Effects</b>: Equivalent to std::make_pair(this->lower_bound(k), this->upper_bound(k)).
    //!
    //! <b>Complexity</b>: Logarithmic.
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       std::pair<iterator,iterator> equal_range(const key_type& x)
       {  return dtl::force_copy<std::pair<iterator,iterator> >(m_flat_tree.lower_bound_range(x)); }
 
    //! <b>Effects</b>: Equivalent to std::make_pair(this->lower_bound(k), this->upper_bound(k)).
    //!
    //! <b>Complexity</b>: Logarithmic.
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       std::pair<const_iterator, const_iterator> equal_range(const key_type& x) const
       {  return dtl::force_copy<std::pair<const_iterator,const_iterator> >(m_flat_tree.lower_bound_range(x)); }
 
@@ -1578,7 +1759,7 @@ class flat_map
    //!
    //! <b>Complexity</b>: Logarithmic.
    template<class K>
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       std::pair<iterator,iterator> equal_range(const K& x)
       //Don't use lower_bound_range optimization here as transparent comparators with key K might
       //return a different range than key_type (which can only return a single element range)
@@ -1591,7 +1772,7 @@ class flat_map
    //!
    //! <b>Complexity</b>: Logarithmic.
    template<class K>
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       std::pair<const_iterator, const_iterator> equal_range(const K& x) const
       //Don't use lower_bound_range optimization here as transparent comparators with key K might
       //return a different range than key_type (which can only return a single element range)
@@ -1604,7 +1785,7 @@ class flat_map
    //! <b>Postcondition</b>: this->empty()
    //!
    //! <b>Throws</b>: If secuence_type's move constructor throws 
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline sequence_type extract_sequence()
+   BOOST_CONTAINER_NODISCARD inline sequence_type extract_sequence()
    {
       return boost::move(dtl::force<sequence_type>(m_flat_tree.get_sequence_ref()));
    }
@@ -1641,42 +1822,42 @@ class flat_map
    //! <b>Effects</b>: Returns true if x and y are equal
    //!
    //! <b>Complexity</b>: Linear to the number of elements in the container.
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       friend bool operator==(const flat_map& x, const flat_map& y)
    {  return x.size() == y.size() && ::boost::container::algo_equal(x.begin(), x.end(), y.begin());  }
 
    //! <b>Effects</b>: Returns true if x and y are unequal
    //!
    //! <b>Complexity</b>: Linear to the number of elements in the container.
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       friend bool operator!=(const flat_map& x, const flat_map& y)
    {  return !(x == y); }
 
    //! <b>Effects</b>: Returns true if x is less than y
    //!
    //! <b>Complexity</b>: Linear to the number of elements in the container.
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       friend bool operator<(const flat_map& x, const flat_map& y)
    {  return ::boost::container::algo_lexicographical_compare(x.begin(), x.end(), y.begin(), y.end());  }
 
    //! <b>Effects</b>: Returns true if x is greater than y
    //!
    //! <b>Complexity</b>: Linear to the number of elements in the container.
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       friend bool operator>(const flat_map& x, const flat_map& y)
    {  return y < x;  }
 
    //! <b>Effects</b>: Returns true if x is equal or less than y
    //!
    //! <b>Complexity</b>: Linear to the number of elements in the container.
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       friend bool operator<=(const flat_map& x, const flat_map& y)
    {  return !(y < x);  }
 
    //! <b>Effects</b>: Returns true if x is equal or greater than y
    //!
    //! <b>Complexity</b>: Linear to the number of elements in the container.
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       friend bool operator>=(const flat_map& x, const flat_map& y)
    {  return !(x < y);  }
 
@@ -1689,29 +1870,26 @@ class flat_map
 
    #ifndef BOOST_CONTAINER_DOXYGEN_INVOKED
    private:
-   mapped_type &priv_subscript(const key_type& k)
+   template<class K>
+   inline mapped_type& priv_subscript(BOOST_FWD_REF(K) key)
    {
+      const typename dtl::remove_cvref<K>::type & k = key;  //Support emulated rvalue references
       iterator i = this->lower_bound(k);
-      // i->first is greater than or equivalent to k.
-      if (i == end() || key_comp()(k, (*i).first)){
-         dtl::value_init<mapped_type> m;
-         impl_value_type v(k, ::boost::move(m.m_t));
-         i = dtl::force_copy<iterator>(this->m_flat_tree.insert_equal(::boost::move(v)));
-      }
-      return (*i).second;
-   }
-   mapped_type &priv_subscript(BOOST_RV_REF(key_type) mk)
-   {
-      key_type &k = mk;
-      iterator i = this->lower_bound(k);
-      // i->first is greater than or equivalent to k.
+
       if (i == end() || key_comp()(k, (*i).first)) {
-         dtl::value_init<mapped_type> m;
-         impl_value_type v(::boost::move(k), ::boost::move(m.m_t));
-         i = dtl::force_copy<iterator>(this->m_flat_tree.insert_equal(::boost::move(v)));
+         typename dtl::aligned_storage<sizeof(impl_value_type), dtl::alignment_of<impl_value_type>::value>::type v;
+         impl_value_type *vp = move_detail::launder_cast<impl_value_type *>(&v);
+
+         impl_get_stored_allocator_noconst_return_t r = m_flat_tree.get_stored_allocator();
+         boost::container::allocator_traits<impl_stored_allocator_type>::construct
+            (r, vp, try_emplace_t(), ::boost::forward<K>(key));
+         i = dtl::force_copy<iterator> (this->m_flat_tree.insert_equal
+               (dtl::force_copy<impl_iterator>(i), ::boost::move(*vp)));
+         vp->~impl_value_type();
       }
       return (*i).second;
    }
+
    #endif   //#ifndef BOOST_CONTAINER_DOXYGEN_INVOKED
 };
 
@@ -2250,7 +2428,7 @@ class flat_multimap
    //!   was passed to the object's constructor.
    //!
    //! <b>Complexity</b>: Constant.
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
    allocator_type get_allocator() const BOOST_NOEXCEPT_OR_NOTHROW
       { return dtl::force_copy<allocator_type>(m_flat_tree.get_allocator()); }
 
@@ -2261,7 +2439,7 @@ class flat_multimap
    //! <b>Complexity</b>: Constant.
    //!
    //! <b>Note</b>: Non-standard extension.
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
    stored_allocator_type &get_stored_allocator() BOOST_NOEXCEPT_OR_NOTHROW
       { return dtl::force<stored_allocator_type>(m_flat_tree.get_stored_allocator()); }
 
@@ -2272,7 +2450,7 @@ class flat_multimap
    //! <b>Complexity</b>: Constant.
    //!
    //! <b>Note</b>: Non-standard extension.
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
    const stored_allocator_type &get_stored_allocator() const BOOST_NOEXCEPT_OR_NOTHROW
       { return dtl::force<const stored_allocator_type>(m_flat_tree.get_stored_allocator()); }
 
@@ -2287,7 +2465,7 @@ class flat_multimap
    //! <b>Throws</b>: Nothing.
    //!
    //! <b>Complexity</b>: Constant.
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
    iterator begin() BOOST_NOEXCEPT_OR_NOTHROW
       { return dtl::force_copy<iterator>(m_flat_tree.begin()); }
 
@@ -2296,7 +2474,7 @@ class flat_multimap
    //! <b>Throws</b>: Nothing.
    //!
    //! <b>Complexity</b>: Constant.
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
    const_iterator begin() const BOOST_NOEXCEPT_OR_NOTHROW
       { return dtl::force_copy<const_iterator>(m_flat_tree.begin()); }
 
@@ -2305,7 +2483,7 @@ class flat_multimap
    //! <b>Throws</b>: Nothing.
    //!
    //! <b>Complexity</b>: Constant.
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
    iterator end() BOOST_NOEXCEPT_OR_NOTHROW
       { return dtl::force_copy<iterator>(m_flat_tree.end()); }
 
@@ -2314,7 +2492,7 @@ class flat_multimap
    //! <b>Throws</b>: Nothing.
    //!
    //! <b>Complexity</b>: Constant.
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
    const_iterator end() const BOOST_NOEXCEPT_OR_NOTHROW
       { return dtl::force_copy<const_iterator>(m_flat_tree.end()); }
 
@@ -2324,7 +2502,7 @@ class flat_multimap
    //! <b>Throws</b>: Nothing.
    //!
    //! <b>Complexity</b>: Constant.
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
    reverse_iterator rbegin() BOOST_NOEXCEPT_OR_NOTHROW
       { return dtl::force_copy<reverse_iterator>(m_flat_tree.rbegin()); }
 
@@ -2334,7 +2512,7 @@ class flat_multimap
    //! <b>Throws</b>: Nothing.
    //!
    //! <b>Complexity</b>: Constant.
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
    const_reverse_iterator rbegin() const BOOST_NOEXCEPT_OR_NOTHROW
       { return dtl::force_copy<const_reverse_iterator>(m_flat_tree.rbegin()); }
 
@@ -2344,7 +2522,7 @@ class flat_multimap
    //! <b>Throws</b>: Nothing.
    //!
    //! <b>Complexity</b>: Constant.
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
    reverse_iterator rend() BOOST_NOEXCEPT_OR_NOTHROW
       { return dtl::force_copy<reverse_iterator>(m_flat_tree.rend()); }
 
@@ -2354,7 +2532,7 @@ class flat_multimap
    //! <b>Throws</b>: Nothing.
    //!
    //! <b>Complexity</b>: Constant.
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
    const_reverse_iterator rend() const BOOST_NOEXCEPT_OR_NOTHROW
       { return dtl::force_copy<const_reverse_iterator>(m_flat_tree.rend()); }
 
@@ -2363,7 +2541,7 @@ class flat_multimap
    //! <b>Throws</b>: Nothing.
    //!
    //! <b>Complexity</b>: Constant.
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
    const_iterator cbegin() const BOOST_NOEXCEPT_OR_NOTHROW
       { return dtl::force_copy<const_iterator>(m_flat_tree.cbegin()); }
 
@@ -2372,7 +2550,7 @@ class flat_multimap
    //! <b>Throws</b>: Nothing.
    //!
    //! <b>Complexity</b>: Constant.
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
    const_iterator cend() const BOOST_NOEXCEPT_OR_NOTHROW
       { return dtl::force_copy<const_iterator>(m_flat_tree.cend()); }
 
@@ -2382,7 +2560,7 @@ class flat_multimap
    //! <b>Throws</b>: Nothing.
    //!
    //! <b>Complexity</b>: Constant.
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
    const_reverse_iterator crbegin() const BOOST_NOEXCEPT_OR_NOTHROW
       { return dtl::force_copy<const_reverse_iterator>(m_flat_tree.crbegin()); }
 
@@ -2392,7 +2570,7 @@ class flat_multimap
    //! <b>Throws</b>: Nothing.
    //!
    //! <b>Complexity</b>: Constant.
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
    const_reverse_iterator crend() const BOOST_NOEXCEPT_OR_NOTHROW
       { return dtl::force_copy<const_reverse_iterator>(m_flat_tree.crend()); }
 
@@ -2407,7 +2585,7 @@ class flat_multimap
    //! <b>Throws</b>: Nothing.
    //!
    //! <b>Complexity</b>: Constant.
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
    bool empty() const BOOST_NOEXCEPT_OR_NOTHROW
       { return m_flat_tree.empty(); }
 
@@ -2416,7 +2594,7 @@ class flat_multimap
    //! <b>Throws</b>: Nothing.
    //!
    //! <b>Complexity</b>: Constant.
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
    size_type size() const BOOST_NOEXCEPT_OR_NOTHROW
       { return m_flat_tree.size(); }
 
@@ -2425,7 +2603,7 @@ class flat_multimap
    //! <b>Throws</b>: Nothing.
    //!
    //! <b>Complexity</b>: Constant.
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
    size_type max_size() const BOOST_NOEXCEPT_OR_NOTHROW
       { return m_flat_tree.max_size(); }
 
@@ -2435,7 +2613,7 @@ class flat_multimap
    //! <b>Throws</b>: Nothing.
    //!
    //! <b>Complexity</b>: Constant.
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
    size_type capacity() const BOOST_NOEXCEPT_OR_NOTHROW
       { return m_flat_tree.capacity(); }
 
@@ -2464,22 +2642,22 @@ class flat_multimap
       { m_flat_tree.shrink_to_fit(); }
 
    //! @copydoc ::boost::container::flat_set::nth(size_type)
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
    iterator nth(size_type n) BOOST_NOEXCEPT_OR_NOTHROW
    {  return dtl::force_copy<iterator>(m_flat_tree.nth(n));  }
 
    //! @copydoc ::boost::container::flat_set::nth(size_type) const
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
    const_iterator nth(size_type n) const BOOST_NOEXCEPT_OR_NOTHROW
    {  return dtl::force_copy<const_iterator>(m_flat_tree.nth(n));  }
 
    //! @copydoc ::boost::container::flat_set::index_of(iterator)
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
    size_type index_of(iterator p) BOOST_NOEXCEPT_OR_NOTHROW
    {  return m_flat_tree.index_of(dtl::force_copy<impl_iterator>(p));  }
 
    //! @copydoc ::boost::container::flat_set::index_of(const_iterator) const
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
    size_type index_of(const_iterator p) const BOOST_NOEXCEPT_OR_NOTHROW
    {  return m_flat_tree.index_of(dtl::force_copy<impl_const_iterator>(p));  }
 
@@ -2614,7 +2792,7 @@ class flat_multimap
    //! <b>Note</b>: If an element is inserted it might invalidate elements.
    template <class InputIterator>
    inline void insert(InputIterator first, InputIterator last)
-      {  m_flat_tree.insert_equal(first, last); }
+      {  m_flat_tree.insert_equal_range(first, last); }
 
    //! <b>Requires</b>: first, last are not iterators into *this.
    //!
@@ -2631,7 +2809,7 @@ class flat_multimap
    //! <b>Note</b>: Non-standard extension.
    template <class InputIterator>
    inline void insert(ordered_range_t, InputIterator first, InputIterator last)
-      {  m_flat_tree.insert_equal(ordered_range, first, last); }
+      {  m_flat_tree.insert_equal_range(ordered_range, first, last); }
 
 #if !defined(BOOST_NO_CXX11_HDR_INITIALIZER_LIST)
    //! <b>Effects</b>: inserts each element from the range [il.begin(), il.end()) .
@@ -2641,8 +2819,8 @@ class flat_multimap
    //! <b>Note</b>: If an element is inserted it might invalidate elements.
    inline void insert(std::initializer_list<value_type> il)
    {
-      m_flat_tree.insert_equal( dtl::force<impl_initializer_list>(il).begin()
-                              , dtl::force<impl_initializer_list>(il).end());
+      m_flat_tree.insert_equal_range( dtl::force<impl_initializer_list>(il).begin()
+                                    , dtl::force<impl_initializer_list>(il).end());
    }
 
    //! <b>Requires</b>: [il.begin(), il.end()) must be ordered according to the predicate.
@@ -2658,9 +2836,9 @@ class flat_multimap
    //! <b>Note</b>: Non-standard extension.
    inline void insert(ordered_range_t, std::initializer_list<value_type> il)
    {
-      m_flat_tree.insert_equal( ordered_range
-                              , dtl::force<impl_initializer_list>(il).begin()
-                              , dtl::force<impl_initializer_list>(il).end());
+      m_flat_tree.insert_equal_range( ordered_range
+                                    , dtl::force<impl_initializer_list>(il).begin()
+                                    , dtl::force<impl_initializer_list>(il).end());
    }
 #endif
 
@@ -2776,7 +2954,7 @@ class flat_multimap
    //!   of which a was constructed.
    //!
    //! <b>Complexity</b>: Constant.
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       key_compare key_comp() const
       { return dtl::force_copy<key_compare>(m_flat_tree.key_comp()); }
 
@@ -2784,7 +2962,7 @@ class flat_multimap
    //!   of the comparison object.
    //!
    //! <b>Complexity</b>: Constant.
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       value_compare value_comp() const
       { return value_compare(dtl::force_copy<key_compare>(m_flat_tree.key_comp())); }
 
@@ -2798,7 +2976,7 @@ class flat_multimap
    //!   equivalent to x, or end() if such an element is not found.
    //!
    //! <b>Complexity</b>: Logarithmic.
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       iterator find(const key_type& x)
       { return dtl::force_copy<iterator>(m_flat_tree.find(x)); }
 
@@ -2806,7 +2984,7 @@ class flat_multimap
    //!   equivalent to x, or end() if such an element is not found.
    //!
    //! <b>Complexity</b>: Logarithmic.
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       const_iterator find(const key_type& x) const
       { return dtl::force_copy<const_iterator>(m_flat_tree.find(x)); }
 
@@ -2818,7 +2996,7 @@ class flat_multimap
    //!
    //! <b>Complexity</b>: Logarithmic.
    template<class K>
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       iterator find(const K& x)
       { return dtl::force_copy<iterator>(m_flat_tree.find(x)); }
 
@@ -2830,14 +3008,14 @@ class flat_multimap
    //!
    //! <b>Complexity</b>: Logarithmic.
    template<class K>
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       const_iterator find(const K& x) const
       { return dtl::force_copy<const_iterator>(m_flat_tree.find(x)); }
 
    //! <b>Returns</b>: The number of elements with key equivalent to x.
    //!
    //! <b>Complexity</b>: log(size())+count(k)
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       size_type count(const key_type& x) const
       { return m_flat_tree.count(x); }
 
@@ -2848,7 +3026,7 @@ class flat_multimap
    //!
    //! <b>Complexity</b>: log(size())+count(k)
    template<class K>
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       size_type count(const K& x) const
       { return m_flat_tree.count(x); }
 
@@ -2856,7 +3034,7 @@ class flat_multimap
    //!   equivalent to key in the container, otherwise false.
    //!
    //! <b>Complexity</b>: log(size()).
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD  inline
+   BOOST_CONTAINER_NODISCARD  inline
       bool contains(const key_type& x) const
       {  return m_flat_tree.find(x) != m_flat_tree.end();  }
 
@@ -2868,7 +3046,7 @@ class flat_multimap
    //!
    //! <b>Complexity</b>: log(size()).
    template<typename K>
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       bool contains(const K& x) const
       {  return m_flat_tree.find(x) != m_flat_tree.end();  }
 
@@ -2876,7 +3054,7 @@ class flat_multimap
    //!   than x, or end() if such an element is not found.
    //!
    //! <b>Complexity</b>: Logarithmic
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       iterator lower_bound(const key_type& x)
       {  return dtl::force_copy<iterator>(m_flat_tree.lower_bound(x)); }
 
@@ -2884,7 +3062,7 @@ class flat_multimap
    //!   than x, or end() if such an element is not found.
    //!
    //! <b>Complexity</b>: Logarithmic
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       const_iterator lower_bound(const key_type& x) const
       {  return dtl::force_copy<const_iterator>(m_flat_tree.lower_bound(x)); }
 
@@ -2896,7 +3074,7 @@ class flat_multimap
    //!
    //! <b>Complexity</b>: Logarithmic
    template<class K>
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       iterator lower_bound(const K& x)
       {  return dtl::force_copy<iterator>(m_flat_tree.lower_bound(x)); }
 
@@ -2908,7 +3086,7 @@ class flat_multimap
    //!
    //! <b>Complexity</b>: Logarithmic
    template<class K>
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       const_iterator lower_bound(const K& x) const
       {  return dtl::force_copy<const_iterator>(m_flat_tree.lower_bound(x)); }
 
@@ -2916,7 +3094,7 @@ class flat_multimap
    //!   than x, or end() if such an element is not found.
    //!
    //! <b>Complexity</b>: Logarithmic
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       iterator upper_bound(const key_type& x)
       {return dtl::force_copy<iterator>(m_flat_tree.upper_bound(x)); }
 
@@ -2924,7 +3102,7 @@ class flat_multimap
    //!   greater than x, or end() if such an element is not found.
    //!
    //! <b>Complexity</b>: Logarithmic
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       const_iterator upper_bound(const key_type& x) const
       {  return dtl::force_copy<const_iterator>(m_flat_tree.upper_bound(x)); }
 
@@ -2936,7 +3114,7 @@ class flat_multimap
    //!
    //! <b>Complexity</b>: Logarithmic
    template<class K>
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       iterator upper_bound(const K& x)
       {return dtl::force_copy<iterator>(m_flat_tree.upper_bound(x)); }
 
@@ -2948,21 +3126,21 @@ class flat_multimap
    //!
    //! <b>Complexity</b>: Logarithmic
    template<class K>
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       const_iterator upper_bound(const K& x) const
       {  return dtl::force_copy<const_iterator>(m_flat_tree.upper_bound(x)); }
 
    //! <b>Effects</b>: Equivalent to std::make_pair(this->lower_bound(k), this->upper_bound(k)).
    //!
    //! <b>Complexity</b>: Logarithmic
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       std::pair<iterator,iterator> equal_range(const key_type& x)
       {  return dtl::force_copy<std::pair<iterator,iterator> >(m_flat_tree.equal_range(x));   }
 
    //! <b>Effects</b>: Equivalent to std::make_pair(this->lower_bound(k), this->upper_bound(k)).
    //!
    //! <b>Complexity</b>: Logarithmic
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       std::pair<const_iterator, const_iterator> equal_range(const key_type& x) const
       {  return dtl::force_copy<std::pair<const_iterator,const_iterator> >(m_flat_tree.equal_range(x));   }
 
@@ -2973,7 +3151,7 @@ class flat_multimap
    //!
    //! <b>Complexity</b>: Logarithmic
    template<class K>
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       std::pair<iterator,iterator> equal_range(const K& x)
       {  return dtl::force_copy<std::pair<iterator,iterator> >(m_flat_tree.equal_range(x));   }
 
@@ -2984,7 +3162,7 @@ class flat_multimap
    //!
    //! <b>Complexity</b>: Logarithmic
    template<class K>
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       std::pair<const_iterator, const_iterator> equal_range(const K& x) const
       {  return dtl::force_copy<std::pair<const_iterator,const_iterator> >(m_flat_tree.equal_range(x));   }
 
@@ -2995,7 +3173,7 @@ class flat_multimap
    //! <b>Postcondition</b>: this->empty()
    //!
    //! <b>Throws</b>: If secuence_type's move constructor throws 
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       sequence_type extract_sequence()
    {  return boost::move(dtl::force<sequence_type>(m_flat_tree.get_sequence_ref()));   }
 
@@ -3030,42 +3208,42 @@ class flat_multimap
    //! <b>Effects</b>: Returns true if x and y are equal
    //!
    //! <b>Complexity</b>: Linear to the number of elements in the container.
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       friend bool operator==(const flat_multimap& x, const flat_multimap& y)
    {  return x.size() == y.size() && ::boost::container::algo_equal(x.begin(), x.end(), y.begin());  }
 
    //! <b>Effects</b>: Returns true if x and y are unequal
    //!
    //! <b>Complexity</b>: Linear to the number of elements in the container.
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       friend bool operator!=(const flat_multimap& x, const flat_multimap& y)
    {  return !(x == y); }
 
    //! <b>Effects</b>: Returns true if x is less than y
    //!
    //! <b>Complexity</b>: Linear to the number of elements in the container.
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       friend bool operator<(const flat_multimap& x, const flat_multimap& y)
    {  return ::boost::container::algo_lexicographical_compare(x.begin(), x.end(), y.begin(), y.end());  }
 
    //! <b>Effects</b>: Returns true if x is greater than y
    //!
    //! <b>Complexity</b>: Linear to the number of elements in the container.
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       friend bool operator>(const flat_multimap& x, const flat_multimap& y)
    {  return y < x;  }
 
    //! <b>Effects</b>: Returns true if x is equal or less than y
    //!
    //! <b>Complexity</b>: Linear to the number of elements in the container.
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       friend bool operator<=(const flat_multimap& x, const flat_multimap& y)
    {  return !(y < x);  }
 
    //! <b>Effects</b>: Returns true if x is equal or greater than y
    //!
    //! <b>Complexity</b>: Linear to the number of elements in the container.
-   BOOST_CONTAINER_ATTRIBUTE_NODISCARD inline
+   BOOST_CONTAINER_NODISCARD inline
       friend bool operator>=(const flat_multimap& x, const flat_multimap& y)
    {  return !(x < y);  }
 
