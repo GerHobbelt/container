@@ -47,6 +47,8 @@
 #include <boost/move/detail/fwd_macros.hpp>
 #endif
 
+#include <boost/assert.hpp>
+
 #ifndef BOOST_CONTAINER_DOXYGEN_INVOKED
 
 #if defined(BOOST_CONTAINER_GCC_COMPATIBLE_HAS_DIAGNOSTIC_IGNORED)

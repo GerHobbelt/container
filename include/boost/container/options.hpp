@@ -244,6 +244,27 @@ class default_next_capacity;
 
 typedef vector_opt<void, void> vector_null_opt;
 
+template<class GrowthType, class StoredSizeType, std::size_t InlineChars>
+struct string_opt
+{
+   typedef GrowthType      growth_factor_type;
+   typedef StoredSizeType  stored_size_type;
+   static const std::size_t inline_chars = InlineChars;
+
+   template<class AllocTraits>
+   struct get_stored_size_type
+      : get_stored_size_type_with_alloctraits<AllocTraits, StoredSizeType>
+   {};
+};
+
+typedef string_opt<void, void, 0u> string_null_opt;
+
+struct growth_factor_50;
+
+struct growth_factor_60;
+
+struct growth_factor_100;
+
 #else
 
 //!This growth factor argument specifies that the container should increase its
@@ -307,7 +328,8 @@ BOOST_INTRUSIVE_OPTION_TYPE(growth_factor, GrowthFactor, GrowthFactor, growth_fa
 //!a 32 bit alignment is required for vector and the size will be rounded to 8 bytes. In a 64-bit
 //!machine a 16 bit size type does not usually save memory when comparing to a 32-bit size type.
 //!Measure the size of the resulting container and do not assume a smaller \c stored_size
-//!will always lead to a smaller sizeof(container).
+//!will always lead to a smaller sizeof(container). You might end up not obtaining any `sizeof`
+//!reduction while severily limiting the maximum size of the container.
 //!
 //!If a user tries to insert more elements than representable by \c stored_size, the container
 //!will throw a length_error.
@@ -671,6 +693,60 @@ struct deque_options
 //! by \c boost::container::deque.
 template<class ...Options>
 using deque_options_t = typename boost::container::deque_options<Options...>::type;
+
+#endif
+
+////////////////////////////////////////////////////////////////
+//
+//
+//          OPTIONS FOR STRING CONTAINER
+//
+//
+////////////////////////////////////////////////////////////////
+
+//! This option specifies the desired number of characters to be hold inline
+//! in the container.
+//!
+//! A value zero represents the default value
+//! (typically 10 chars in 32-bit systems and 22 chars in 64-bit systems).
+//!
+//!\tparam InlineChars An unsigned integer value. Values greater than 127 are not supported
+//!                    duet to the internal data structure design.
+BOOST_INTRUSIVE_OPTION_CONSTANT(inline_chars, std::size_t, InlineChars, inline_chars)
+
+//! Helper metafunction to combine options into a single type to be used
+//! by \c boost::container::string.
+//! Supported options are: \c boost::container::growth_factor and \c boost::container::stored_size
+#if defined(BOOST_CONTAINER_DOXYGEN_INVOKED) || defined(BOOST_CONTAINER_VARIADIC_TEMPLATES)
+template<class ...Options>
+#else
+template<class O1 = void, class O2 = void, class O3 = void, class O4 = void>
+#endif
+struct string_options
+{
+   /// @cond
+   typedef typename ::boost::intrusive::pack_options
+      < string_null_opt,
+      #if !defined(BOOST_CONTAINER_VARIADIC_TEMPLATES)
+      O1, O2, O3, O4
+      #else
+      Options...
+      #endif
+      >::type packed_options;
+   typedef string_opt< typename packed_options::growth_factor_type
+                     , typename packed_options::stored_size_type
+                     , packed_options::inline_chars
+                     > implementation_defined;
+   /// @endcond
+   typedef implementation_defined type;
+};
+
+#if !defined(BOOST_NO_CXX11_TEMPLATE_ALIASES)
+
+//! Helper alias metafunction to combine options into a single type to be used
+//! by \c boost::container::string.
+template<class ...Options>
+using string_options_t = typename boost::container::string_options<Options...>::type;
 
 #endif
 

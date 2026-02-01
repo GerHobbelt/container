@@ -179,12 +179,11 @@ class allocator
    //!Throws bad_alloc if there is no enough memory
    //!If Version is 2, this allocated memory can only be deallocated
    //!with deallocate() or (for Version == 2) deallocate_many()
-   BOOST_CONTAINER_NODISCARD pointer allocate(size_type count, const void * hint= 0)
+   BOOST_CONTAINER_NODISCARD pointer allocate(size_type count)
    {
-      (void)hint;
       if(count > size_type(-1)/(2u*sizeof(T)))
          boost::container::throw_bad_alloc();
-      void *ret = dlmalloc_malloc(count*sizeof(T));
+      void *ret = dlmalloc_memalign(count*sizeof(T), dtl::alignment_of<T>::value);
       if(!ret)
          boost::container::throw_bad_alloc();
       return static_cast<pointer>(ret);
@@ -359,7 +358,8 @@ class allocator
       std::size_t r_size;
       {
          void* reuse_ptr_void = reuse_ptr;
-         ret = dlmalloc_allocation_command(command, sizeof(T), l_size, p_size, &r_size, reuse_ptr_void);
+         ret = dlmalloc_allocation_command( command, sizeof(T), dtl::alignment_of<T>::value
+                                          , l_size, p_size, &r_size, reuse_ptr_void);
          reuse_ptr = ret.second ? static_cast<T*>(reuse_ptr_void) : 0;
       }
       prefer_in_recvd_out_size = r_size/sizeof(T);

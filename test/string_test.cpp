@@ -560,16 +560,16 @@ void test_type_traits()
    typedef string::const_reverse_iterator criter;
 
    BOOST_TEST_TRAIT_TRUE((dtl::is_same<
-      typename std::iterator_traits<iter>::iterator_category,
+      std::iterator_traits<iter>::iterator_category,
       std::random_access_iterator_tag>));
    BOOST_TEST_TRAIT_TRUE((dtl::is_same<
-      typename std::iterator_traits<citer>::iterator_category,
+      std::iterator_traits<citer>::iterator_category,
       std::random_access_iterator_tag>));
    BOOST_TEST_TRAIT_TRUE((dtl::is_same<
-      typename std::iterator_traits<riter>::iterator_category,
+      std::iterator_traits<riter>::iterator_category,
       std::random_access_iterator_tag>));
    BOOST_TEST_TRAIT_TRUE((dtl::is_same<
-      typename std::iterator_traits<criter>::iterator_category,
+      std::iterator_traits<criter>::iterator_category,
       std::random_access_iterator_tag>));
 
    // npos
@@ -1291,6 +1291,9 @@ void test_insert_initializer_list()
 
    s.insert(s.end(), {'d', 'e', 'f'});
    BOOST_TEST(s == "abcdef");
+
+   s.insert(s.end(), {});
+   BOOST_TEST(s == "abcdef");
    #endif
 }
 
@@ -1412,6 +1415,9 @@ void test_append_initializer_list()
 
    s.append({',', ' ', 'W', 'o', 'r', 'l', 'd', '!'});
    BOOST_TEST(s == "Hello, World!");
+
+   s.append({});
+   BOOST_TEST(s == "Hello, World!");
    #endif
 }
 
@@ -1434,6 +1440,8 @@ void test_operator_plus_equals()
    #if !defined(BOOST_NO_CXX11_HDR_INITIALIZER_LIST)
    // += initializer_list
    s += {'!', '!'};
+   BOOST_TEST(s == "Hello, World!!!");
+   s += {};
    BOOST_TEST(s == "Hello, World!!!");
    #endif
 }
@@ -1473,80 +1481,50 @@ void test_compare()
 }
 
 //==============================================================================
-// SECTION 11: Operations - starts_with, ends_with, contains (helper functions)
-// Note: boost::container::string may not have these methods, so we implement
-// them using find/compare for testing purposes
+// SECTION 11: Operations - starts_with, ends_with, contains
 //==============================================================================
-
-// Helper functions for starts_with/ends_with/contains since boost::container::string
-// might not have these methods in older versions
-namespace test_helpers {
-   bool starts_with(const string& s, const char* prefix) {
-      string::size_type len = std::strlen(prefix);
-      return s.size() >= len && s.compare(0, len, prefix) == 0;
-   }
-   bool starts_with(const string& s, char c) {
-      return !s.empty() && s[0] == c;
-   }
-   bool ends_with(const string& s, const char* suffix) {
-      string::size_type len = std::strlen(suffix);
-      return s.size() >= len && s.compare(s.size() - len, len, suffix) == 0;
-   }
-   bool ends_with(const string& s, char c) {
-      return !s.empty() && s[s.size() - 1] == c;
-   }
-   bool contains(const string& s, const char* substr) {
-      return s.find(substr) != string::npos;
-   }
-   bool contains(const string& s, char c) {
-      return s.find(c) != string::npos;
-   }
-}
 
 void test_starts_with()
 {
    string s("Hello, World!");
 
-   using test_helpers::starts_with;
-   BOOST_TEST(starts_with(s, "Hello"));
-   BOOST_TEST(starts_with(s, "H"));
-   BOOST_TEST(starts_with(s, ""));
-   BOOST_TEST(starts_with(s, 'H'));
+   BOOST_TEST(s.starts_with("Hello"));
+   BOOST_TEST(s.starts_with("H"));
+   BOOST_TEST(s.starts_with(""));
+   BOOST_TEST(s.starts_with('H'));
 
-   BOOST_TEST(!starts_with(s, "World"));
-   BOOST_TEST(!starts_with(s, "hello")); // case-sensitive
-   BOOST_TEST(!starts_with(s, 'W'));
+   BOOST_TEST(!s.starts_with("World"));
+   BOOST_TEST(!s.starts_with("hello")); // case-sensitive
+   BOOST_TEST(!s.starts_with('W'));
 }
 
 void test_ends_with()
 {
    string s("Hello, World!");
 
-   using test_helpers::ends_with;
-   BOOST_TEST(ends_with(s, "World!"));
-   BOOST_TEST(ends_with(s, "!"));
-   BOOST_TEST(ends_with(s, ""));
-   BOOST_TEST(ends_with(s, '!'));
+   BOOST_TEST(s.ends_with("World!"));
+   BOOST_TEST(s.ends_with("!"));
+   BOOST_TEST(s.ends_with(""));
+   BOOST_TEST(s.ends_with('!'));
 
-   BOOST_TEST(!ends_with(s, "Hello"));
-   BOOST_TEST(!ends_with(s, "world!")); // case-sensitive
-   BOOST_TEST(!ends_with(s, 'H'));
+   BOOST_TEST(!s.ends_with("Hello"));
+   BOOST_TEST(!s.ends_with("world!")); // case-sensitive
+   BOOST_TEST(!s.ends_with('H'));
 }
 
 void test_contains()
 {
    string s("Hello, World!");
 
-   using test_helpers::contains;
-   BOOST_TEST(contains(s, "World"));
-   BOOST_TEST(contains(s, "Hello"));
-   BOOST_TEST(contains(s, ", "));
-   BOOST_TEST(contains(s, ""));
-   BOOST_TEST(contains(s, 'W'));
+   BOOST_TEST(s.contains("World"));
+   BOOST_TEST(s.contains("Hello"));
+   BOOST_TEST(s.contains(", "));
+   BOOST_TEST(s.contains(""));
+   BOOST_TEST(s.contains('W'));
 
-   BOOST_TEST(!contains(s, "world")); // case-sensitive
-   BOOST_TEST(!contains(s, "xyz"));
-   BOOST_TEST(!contains(s, 'X'));
+   BOOST_TEST(!s.contains("world")); // case-sensitive
+   BOOST_TEST(!s.contains("xyz"));
+   BOOST_TEST(!s.contains('X'));
 }
 
 //==============================================================================
@@ -1617,6 +1595,8 @@ void test_replace_iterator()
    s = "Hello, World!";
    s.replace(s.begin() + 7, s.begin() + 12, {'S', 'u', 'n'});
    BOOST_TEST(s == "Hello, Sun!");
+   s.replace(s.begin() + 5, s.begin() + 10, {});
+   BOOST_TEST(s == "Hello!");
    #endif
 }
 
