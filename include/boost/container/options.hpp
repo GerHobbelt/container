@@ -660,8 +660,9 @@ typedef deque_opt<0u, 0u, void, false> deque_null_opt;
 
 //! Helper metafunction to combine options into a single type to be used
 //! by \c boost::container::deque.
-//! Supported options are: \c boost::container::block_bytes, \c boost::container::block_size,
-//! \c boost::container::stored_size and \c boost::container::reservable
+//! Supported options are: \c boost::container::block_bytes / \c boost::container::segment_bytes,
+//! \c boost::container::block_size / \c boost::container::segment_size,
+//! \c boost::container::stored_size
 #if defined(BOOST_CONTAINER_DOXYGEN_INVOKED) || defined(BOOST_CONTAINER_VARIADIC_TEMPLATES)
 template<class ...Options>
 #else
@@ -693,6 +694,49 @@ struct deque_options
 //! by \c boost::container::deque.
 template<class ...Options>
 using deque_options_t = typename boost::container::deque_options<Options...>::type;
+
+#endif
+
+////////////////////////////////////////////////////////////////
+//
+//
+//          OPTIONS FOR SEGTOR CONTAINERS
+//
+//
+////////////////////////////////////////////////////////////////
+
+#if !defined(BOOST_CONTAINER_DOXYGEN_INVOKED)
+
+template<std::size_t BlockBytes, std::size_t BlockSize, class StoredSizeType, bool Reservable>
+struct segtor_opt : public deque_opt<BlockBytes, BlockSize, StoredSizeType, Reservable>
+{};
+
+typedef segtor_opt<0u, 0u, void, false> segtor_null_opt;
+
+#endif
+
+//! Helper metafunction to combine options into a single type to be used
+//! by \c boost::container::segtor.
+//! Supported options are: \c boost::container::block_bytes / \c boost::container::segment_bytes,
+//! \c boost::container::block_size / \c boost::container::segment_size,
+//! \c boost::container::stored_size
+#if defined(BOOST_CONTAINER_DOXYGEN_INVOKED) || defined(BOOST_CONTAINER_VARIADIC_TEMPLATES)
+template<class ...Options>
+struct segtor_options
+   : deque_options<Options...>
+#else
+template<class O1 = void, class O2 = void, class O3 = void, class O4 = void>
+struct segtor_options
+   : deque_options<O1, O2, O3, O4>
+#endif
+{};
+
+#if !defined(BOOST_NO_CXX11_TEMPLATE_ALIASES)
+
+//! Helper alias metafunction to combine options into a single type to be used
+//! by \c boost::container::segtor.
+template<class ...Options>
+using segtor_options_t = typename boost::container::segtor_options<Options...>::type;
 
 #endif
 
@@ -751,28 +795,42 @@ using string_options_t = typename boost::container::string_options<Options...>::
 #endif
 
 //!This option specifies the maximum size of a block in bytes: this delimites the number of contiguous elements
-//!that will be allocated by some containers as min(1u, BlockBytes/sizeof(value_type))
+//!that will be allocated by some segmented containers as min(1u, BlockBytes/sizeof(value_type))
 //!A value zero represents the default value.
 //!
 //!\tparam BlockBytes An unsigned integer value.
 BOOST_INTRUSIVE_OPTION_CONSTANT(block_bytes, std::size_t, BlockBytes, block_bytes)
 
-//!This option specifies the size of a block, delimites the number of contiguous elements
-//!that will be allocated by some containersas BlockSize.
-//!For some containers (like deque), a power of two value can improve performance.
+//!An alias for `block_bytes`
+//!
+//!\tparam SegmentBytes An unsigned integer value.
+BOOST_INTRUSIVE_OPTION_CONSTANT(segment_bytes, std::size_t, SegmentBytes, block_bytes)
+
+//!This option specifies the size of a block, delimites the number of contiguous elements (BlockSize)
+//!that will be allocated by segmented containers.
+//!For some containers (like deque/segtor), a power of two value can improve performance.
 //!A value zero represents the default value.
 //!
 //!\tparam BlockBytes An unsigned integer value.
 BOOST_INTRUSIVE_OPTION_CONSTANT(block_size, std::size_t, BlockSize, block_size)
 
+//!An alias for `block_size`
+//!
+//!\tparam SegmentSize An unsigned integer value.
+BOOST_INTRUSIVE_OPTION_CONSTANT(segment_size, std::size_t, SegmentSize, block_size)
+
+#ifndef BOOST_CONTAINER_DOXYGEN_INVOKED
+
 //!This option specifies if the container has reserve/capacity-like features
 //!
-//!For some containers (like deque) this option might change the internal representation or
+//!For some containers (like deque/segtor) this option might change the internal representation or
 //!behavior so that memory for elements can be allocated in advance in
 //!order to improve performance.
 //!
 //!\tparam Reservable An boolean value.
 BOOST_INTRUSIVE_OPTION_CONSTANT(reservable, bool, Reservable, reservable)
+
+#endif   //   !defined(BOOST_CONTAINER_DOXYGEN_INVOKED)
 
 }  //namespace container {
 }  //namespace boost {
