@@ -259,7 +259,8 @@ class deque_iterator
       if (BOOST_UNLIKELY(this->m_cur == first)) {
          --this->m_node;
          this->m_cur = *this->m_node;
-         this->m_cur += get_block_ssize() - 1;
+         BOOST_CONSTEXPR_OR_CONST difference_type block_size = get_block_ssize();
+         this->m_cur += block_size - 1;
       }
       else {
          --this->m_cur;
@@ -619,8 +620,9 @@ class deque_base
       //Even a zero element initialized map+nodes needs at least 1 node (for sentinel finish position)
       size_type num_nodes = size_type(num_elements / block_size + 1u);
 
-      //Allocate at least one extra slot on each used end to avoid inmediate map reallocation on push/front insertions
-      const size_type map_size = dtl::max_value(size_type(InitialMapSize), size_type(num_nodes + 1u + size_type(is_single_ended)));
+      //Allocate at least one extra slot on each used end to avoid inmediate map reallocation on push/front insertions for non-reservable
+      const size_type map_size = dtl::max_value( size_type(InitialMapSize)
+                                               , size_type(num_nodes + size_type(!is_reservable)*(1u + size_type(!is_single_ended))));
       const size_type start_map_pos = is_single_ended ? 0u : size_type(map_size - num_nodes)/2u;
 
       //The end position must be representable in stored_size_type
@@ -904,7 +906,7 @@ class deque_base
    {
       const ptr_alloc_ptr n = it.get_node();
       BOOST_ASSERT(!this->members_.m_map == !n);  //Both should be null or both non-null
-      if (n) {
+      if (BOOST_LIKELY(n != 0)) {
          BOOST_CONSTEXPR_OR_CONST std::size_t block_size = deque_base::get_block_size();
          return static_cast<stored_size_type>(std::size_t(n - this->members_.m_map)*block_size + std::size_t(it.get_cur() - *n));
       }
@@ -1467,7 +1469,7 @@ class deque_impl : protected deque_base<typename real_allocator<T, Allocator>::t
       (void)n;
       BOOST_IF_CONSTEXPR(is_reservable){
          const size_type cur_back_cap = this->back_capacity();
-         if (this->back_capacity() < n)
+         if (cur_back_cap < n)
             this->priv_reserve_elements_at_back(size_type(n - cur_back_cap) );
       }
    }
@@ -1477,9 +1479,9 @@ class deque_impl : protected deque_base<typename real_allocator<T, Allocator>::t
       BOOST_CONTAINER_STATIC_ASSERT(!is_single_ended);
       (void)n;
       BOOST_IF_CONSTEXPR(is_reservable){
-         const size_type cur_back_cap = this->front_capacity();
-         if (this->front_capacity() < n)
-            this->priv_reserve_elements_at_front(size_type(n - cur_back_cap) );
+         const size_type cur_front_cap = this->front_capacity();
+         if (cur_front_cap < n)
+            this->priv_reserve_elements_at_front(size_type(n - cur_front_cap) );
       }
    }
 
@@ -1636,7 +1638,7 @@ class deque_impl : protected deque_base<typename real_allocator<T, Allocator>::t
    reference emplace_front(BOOST_FWD_REF(Args)... args)
    {
       BOOST_ASSERT(!is_single_ended);
-      value_type *pr = this->prot_push_front_simple_pos();
+      value_type *const pr = this->prot_push_front_simple_pos();
       if(BOOST_LIKELY(pr != 0)){
          allocator_traits_type::construct
             ( this->alloc()
@@ -1654,7 +1656,7 @@ class deque_impl : protected deque_base<typename real_allocator<T, Allocator>::t
    template <class... Args>
    reference emplace_back(BOOST_FWD_REF(Args)... args)
    {
-      value_type *pr = this->prot_push_back_simple_pos();
+      value_type *const pr = this->prot_push_back_simple_pos();
       if(BOOST_LIKELY(pr != 0)){
          allocator_traits_type::construct
             ( this->alloc(), pr, boost::forward<Args>(args)...);
@@ -1673,20 +1675,19 @@ class deque_impl : protected deque_base<typename real_allocator<T, Allocator>::t
       const size_type elemsbefore = this->prot_it_to_start_off(p);
       const size_type length = this->prot_size();
 
+      if (elemsbefore == length) {
+         this->emplace_back(boost::forward<Args>(args)...);
+         return this->prot_back_it();
+      }
+
       BOOST_IF_CONSTEXPR(!is_single_ended)
       if (!elemsbefore) {
          this->emplace_front(boost::forward<Args>(args)...);
          return this->begin();
       }
 
-      if (elemsbefore == length) {
-         this->emplace_back(boost::forward<Args>(args)...);
-         return this->prot_back_it();
-      }
-      else {
-         typedef dtl::insert_emplace_proxy<ValAllocator, Args...> type;
-         return this->priv_insert_middle_aux_impl(elemsbefore, 1, type(boost::forward<Args>(args)...));
-      }
+      typedef dtl::insert_emplace_proxy<ValAllocator, Args...> type;
+      return this->priv_insert_middle_aux_impl(elemsbefore, 1, type(boost::forward<Args>(args)...));
    }
 
    #else //   !defined(BOOST_NO_CXX11_VARIADIC_TEMPLATES)
@@ -1695,7 +1696,7 @@ class deque_impl : protected deque_base<typename real_allocator<T, Allocator>::t
    BOOST_MOVE_TMPL_LT##N BOOST_MOVE_CLASS##N BOOST_MOVE_GT##N\
    reference emplace_front(BOOST_MOVE_UREF##N)\
    {\
-      value_type *pr = this->prot_push_front_simple_pos();\
+      value_type *const pr = this->prot_push_front_simple_pos();\
       if(BOOST_LIKELY(pr != 0)){\
          allocator_traits_type::construct\
             ( this->alloc(), pr BOOST_MOVE_I##N BOOST_MOVE_FWD##N);\
@@ -1712,7 +1713,7 @@ class deque_impl : protected deque_base<typename real_allocator<T, Allocator>::t
    BOOST_MOVE_TMPL_LT##N BOOST_MOVE_CLASS##N BOOST_MOVE_GT##N\
    reference emplace_back(BOOST_MOVE_UREF##N)\
    {\
-      value_type *pr = this->prot_push_back_simple_pos();\
+      value_type * const pr = this->prot_push_back_simple_pos();\
       if(BOOST_LIKELY(pr != 0)){\
          allocator_traits_type::construct\
             ( this->alloc(), pr BOOST_MOVE_I##N BOOST_MOVE_FWD##N);\
@@ -2222,17 +2223,16 @@ class deque_impl : protected deque_base<typename real_allocator<T, Allocator>::t
    {
       const size_type elemsbefore = this->prot_it_to_start_off(p);
 
+      if (elemsbefore == this->prot_size()) {
+         return this->priv_insert_back_aux_impl(n, proxy);
+      }
+
       BOOST_IF_CONSTEXPR(!is_single_ended)
          if(!elemsbefore) {
             return this->priv_insert_front_aux_impl(n, proxy);
       }
 
-      if (elemsbefore == this->prot_size()) {
-         return this->priv_insert_back_aux_impl(n, proxy);
-      }
-      else {
-         return this->priv_insert_middle_aux_impl(elemsbefore, n, proxy);
-      }
+      return this->priv_insert_middle_aux_impl(elemsbefore, n, proxy);
    }
 
    template <class InsertProxy>
