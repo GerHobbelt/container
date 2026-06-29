@@ -836,7 +836,7 @@ public:
    typedef T                                                                           value_type;
    typedef BOOST_CONTAINER_IMPDEF
       (typename real_allocator<T BOOST_MOVE_I A>::type)                                allocator_type;
-   typedef ::boost::container::allocator_traits<allocator_type>                        allocator_traits_t;
+   typedef boost::container::allocator_traits<allocator_type>                        allocator_traits_t;
    typedef typename   allocator_traits<allocator_type>::pointer                        pointer;
    typedef typename   allocator_traits<allocator_type>::const_pointer                  const_pointer;
    typedef typename   allocator_traits<allocator_type>::reference                      reference;
@@ -1972,6 +1972,27 @@ private:
       return is_room_enough;
    }
 
+   //! <b>Requires</b>: Before the call to this function size() < capacity() must be true.
+   //!   Otherwise, the behavior is undefined.
+   //!
+   //! <b>Effects</b>: Inserts an object of type T constructed with
+   //!   std::forward<Args>(args)... in the end of the vector.
+   //!
+   //! <b>Throws</b>: If the in-place constructor throws.
+   //!
+   //! <b>Complexity</b>: Constant time.
+   //!
+   //! <b>Note</b>: Non-standard extension.
+   template<class ...Args>
+   BOOST_CONTAINER_FORCEINLINE reference unchecked_emplace_back(BOOST_FWD_REF(Args)...args)
+   {
+      BOOST_ASSERT(this->size() < this->capacity());
+      T* const p = this->priv_raw_end();
+      allocator_traits_type::construct(this->m_holder.alloc(), p, ::boost::forward<Args>(args)...);
+      ++this->m_holder.m_size;
+      return *p;
+   }
+
    //! <b>Requires</b>: position must be a valid iterator of *this.
    //!
    //! <b>Effects</b>: Inserts an object of type T constructed with
@@ -2025,6 +2046,17 @@ private:
    }\
    \
    BOOST_MOVE_TMPL_LT##N BOOST_MOVE_CLASS##N BOOST_MOVE_GT##N \
+   inline reference unchecked_emplace_back(BOOST_MOVE_UREF##N)\
+   {\
+      BOOST_ASSERT(this->size() < this->capacity());\
+      T* const p = this->priv_raw_end();\
+      allocator_traits_type::construct (this->m_holder.alloc()\
+         , p BOOST_MOVE_I##N BOOST_MOVE_FWD##N);\
+      ++this->m_holder.m_size;\
+      return *p;\
+   }\
+   \
+   BOOST_MOVE_TMPL_LT##N BOOST_MOVE_CLASS##N BOOST_MOVE_GT##N \
    inline iterator emplace(const_iterator pos BOOST_MOVE_I##N BOOST_MOVE_UREF##N)\
    {\
       BOOST_ASSERT(this->priv_in_range_or_end(pos));\
@@ -2054,8 +2086,30 @@ private:
    //!
    //! <b>Complexity</b>: Amortized constant time.
    void push_back(T &&x);
+
+   //! <b>Requires</b>: Before the call to this function size() < capacity() must be true.
+   //!   Otherwise, the behavior is undefined.
+   //!
+   //! <b>Effects</b>: Inserts a copy of x at the end of the vector.
+   //!
+   //! <b>Throws</b>: If T's copy/move constructor throws.
+   //!
+   //! <b>Complexity</b>: Constant time.
+   void unchecked_push_back(const T &x);
+
+   //! <b>Requires</b>: Before the call to this function size() < capacity() must be true.
+   //!   Otherwise, the behavior is undefined.
+   //!
+   //! <b>Effects</b>: Constructs a new element in the end of the vector
+   //!   and moves the resources of x to this new element.
+   //!
+   //! <b>Throws</b>: If T's copy/move constructor throws.
+   //!
+   //! <b>Complexity</b>: Constant time.
+   void unchecked_push_back(T &&x);
    #else
    BOOST_MOVE_CONVERSION_AWARE_CATCH(push_back, T, void, priv_push_back)
+   BOOST_MOVE_CONVERSION_AWARE_CATCH(unchecked_push_back, T, void, priv_unchecked_push_back)
    #endif
 
    #if defined(BOOST_CONTAINER_DOXYGEN_INVOKED)
@@ -2944,8 +2998,18 @@ private:
       this->emplace_back(::boost::forward<U>(u));
    }
 
+   template <class U>
+   BOOST_CONTAINER_FORCEINLINE void priv_unchecked_push_back(BOOST_FWD_REF(U) u)
+   {
+      this->unchecked_emplace_back(::boost::forward<U>(u));
+   }
+
    //Overload to support compiler errors that instantiate too much
    inline void priv_push_back(::boost::move_detail::nat)
+   {}
+
+   //Overload to support compiler errors that instantiate too much
+   inline void priv_unchecked_push_back(::boost::move_detail::nat)
    {}
 
    inline iterator priv_insert(const_iterator, ::boost::move_detail::nat)
@@ -3056,7 +3120,7 @@ private:
    #endif
 
    template <class InsertionProxy>
-   BOOST_CONTAINER_NOINLINE iterator priv_insert_forward_range_no_capacity
+   iterator priv_insert_forward_range_no_capacity
       (T *const raw_pos, const size_type n, const InsertionProxy insert_range_proxy, version_1)
    {
       const size_type new_cap = this->m_holder.template next_capacity<growth_factor_type>(n);
@@ -3421,7 +3485,7 @@ template <class T, class Allocator, class Options>
 struct has_trivial_destructor_after_move<boost::container::vector<T, Allocator, Options> >
 {
    typedef typename boost::container::vector<T, Allocator, Options>::allocator_type allocator_type;
-   typedef typename ::boost::container::allocator_traits<allocator_type>::pointer pointer;
+   typedef typename boost::container::allocator_traits<allocator_type>::pointer pointer;
    BOOST_STATIC_CONSTEXPR bool value = ::boost::has_trivial_destructor_after_move<allocator_type>::value &&
                                                 ::boost::has_trivial_destructor_after_move<pointer>::value;
 };

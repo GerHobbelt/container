@@ -89,13 +89,13 @@ class set
    typedef Compare                                                                        key_compare;
    typedef key_compare                                                                    value_compare;
    typedef typename base_t::allocator_type                                                allocator_type;
-   typedef ::boost::container::allocator_traits<allocator_type>                           allocator_traits_type;
-   typedef typename ::boost::container::allocator_traits<allocator_type>::pointer         pointer;
-   typedef typename ::boost::container::allocator_traits<allocator_type>::const_pointer   const_pointer;
-   typedef typename ::boost::container::allocator_traits<allocator_type>::reference       reference;
-   typedef typename ::boost::container::allocator_traits<allocator_type>::const_reference const_reference;
-   typedef typename ::boost::container::allocator_traits<allocator_type>::size_type       size_type;
-   typedef typename ::boost::container::allocator_traits<allocator_type>::difference_type difference_type;
+   typedef boost::container::allocator_traits<allocator_type>                           allocator_traits_type;
+   typedef typename boost::container::allocator_traits<allocator_type>::pointer         pointer;
+   typedef typename boost::container::allocator_traits<allocator_type>::const_pointer   const_pointer;
+   typedef typename boost::container::allocator_traits<allocator_type>::reference       reference;
+   typedef typename boost::container::allocator_traits<allocator_type>::const_reference const_reference;
+   typedef typename boost::container::allocator_traits<allocator_type>::size_type       size_type;
+   typedef typename boost::container::allocator_traits<allocator_type>::difference_type difference_type;
    typedef typename BOOST_CONTAINER_IMPDEF(base_t::stored_allocator_type)                 stored_allocator_type;
    typedef typename BOOST_CONTAINER_IMPDEF(base_t::iterator)                              iterator;
    typedef typename BOOST_CONTAINER_IMPDEF(base_t::const_iterator)                        const_iterator;
@@ -656,10 +656,12 @@ class set
    template <class K>
    inline BOOST_CONTAINER_DOC1ST
       ( iterator
-      , typename dtl::enable_if_transparent< key_compare
-                                             BOOST_MOVE_I K
-                                             BOOST_MOVE_I iterator
-                                           >::type)  //transparent
+      , typename dtl::enable_if_c<
+         dtl::is_transparent<key_compare>::value &&                  //transparent
+         !dtl::is_convertible<K BOOST_MOVE_I iterator>::value &&     //not convertible to iterator
+         !dtl::is_convertible<K BOOST_MOVE_I const_iterator>::value  //not convertible to const_iterator
+         BOOST_MOVE_I iterator
+         >::type)
       insert(const_iterator p, K &&x)
    {  return this->base_t::insert_unique_hint_convertible(p, boost::forward<K>(x)); }
 
@@ -1147,13 +1149,13 @@ class multiset
    typedef Compare                                                                        key_compare;
    typedef key_compare                                                                    value_compare;
    typedef typename base_t::allocator_type                                                allocator_type;
-   typedef ::boost::container::allocator_traits<allocator_type>                           allocator_traits_type;
-   typedef typename ::boost::container::allocator_traits<allocator_type>::pointer         pointer;
-   typedef typename ::boost::container::allocator_traits<allocator_type>::const_pointer   const_pointer;
-   typedef typename ::boost::container::allocator_traits<allocator_type>::reference       reference;
-   typedef typename ::boost::container::allocator_traits<allocator_type>::const_reference const_reference;
-   typedef typename ::boost::container::allocator_traits<allocator_type>::size_type       size_type;
-   typedef typename ::boost::container::allocator_traits<allocator_type>::difference_type difference_type;
+   typedef boost::container::allocator_traits<allocator_type>                           allocator_traits_type;
+   typedef typename boost::container::allocator_traits<allocator_type>::pointer         pointer;
+   typedef typename boost::container::allocator_traits<allocator_type>::const_pointer   const_pointer;
+   typedef typename boost::container::allocator_traits<allocator_type>::reference       reference;
+   typedef typename boost::container::allocator_traits<allocator_type>::const_reference const_reference;
+   typedef typename boost::container::allocator_traits<allocator_type>::size_type       size_type;
+   typedef typename boost::container::allocator_traits<allocator_type>::difference_type difference_type;
    typedef typename BOOST_CONTAINER_IMPDEF(base_t::stored_allocator_type)                 stored_allocator_type;
    typedef typename BOOST_CONTAINER_IMPDEF(base_t::iterator)                              iterator;
    typedef typename BOOST_CONTAINER_IMPDEF(base_t::const_iterator)                        const_iterator;

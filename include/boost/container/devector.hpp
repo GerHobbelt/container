@@ -334,14 +334,14 @@ class devector
    * iterator does not meet the forward iterator requirements, `T` shall also be [MoveInsertable]
    * into `*this`.
    *
-   * **Postcondition**: `size() == boost::container::iterator_distance(first, last)
+   * **Postcondition**: `size() == boost::container::iterator_distance(first, last)`
    *
    * **Exceptions**: Strong exception guarantee.
    *
    * **Complexity**: Makes only `N` calls to the copy constructor of `T` (where `N` is the distance between `first`
    * and `last`), at most one allocation and no reallocations if iterators first and last are of forward,
    * bidirectional, or random access categories. It makes `O(N)` calls to the copy constructor of `T`
-   * and `O(log(N)) reallocations if they are just input iterators.
+   * and `O(log(N))` reallocations if they are just input iterators.
    *
    * **Remarks**: Each iterator in the range `[first,last)` shall be dereferenced exactly once,
    * unless an exception is thrown.
@@ -1935,7 +1935,7 @@ class devector
    * **Complexity**: Linear in the size of `*this` and `N` (where `N` is the distance between `first` and `last`).
    * Makes only `N` calls to the constructor of `T` and no reallocations if iterators `first` and `last`
    * are of forward, bidirectional, or random access categories. It makes 2N calls to the copy constructor of `T`
-   * and `O(log(N)) reallocations if they are just input iterators.
+   * and `O(log(N))` reallocations if they are just input iterators.
    *
    * **Exceptions**: Strong exception guarantee if `T` is `NothrowConstructible`
    * and `NothrowAssignable`, Basic exception guarantee otherwise.
@@ -3080,7 +3080,7 @@ template <class T, class Allocator, class Options>
 struct has_trivial_destructor_after_move<boost::container::devector<T, Allocator, Options> >
 {
     typedef typename boost::container::devector<T, Allocator, Options>::allocator_type allocator_type;
-    typedef typename ::boost::container::allocator_traits<allocator_type>::pointer pointer;
+    typedef typename boost::container::allocator_traits<allocator_type>::pointer pointer;
     BOOST_STATIC_CONSTEXPR bool value =
       ::boost::has_trivial_destructor_after_move<allocator_type>::value &&
       ::boost::has_trivial_destructor_after_move<pointer>::value;

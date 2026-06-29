@@ -111,6 +111,12 @@ struct deque_block_traits
 
 #endif   //#ifndef BOOST_CONTAINER_DOXYGEN_INVOKED
 
+////////////////////////////////////////////////////////////////////////////
+//
+// Implementation of deque iterators.  This is a random access iterator
+// 
+////////////////////////////////////////////////////////////////////////////
+// 
 // Class invariants:
 //  For any nonsingular iterator i:
 //    i.node is the address of an element in the map array.  The
@@ -180,10 +186,10 @@ class deque_iterator
 
    public:
 
-   BOOST_CONTAINER_NODISCARD inline Pointer get_cur()          const  {  return m_cur;  }
-   BOOST_CONTAINER_NODISCARD inline index_pointer get_node()   const  {  return m_node;  }
-   BOOST_CONTAINER_NODISCARD inline Pointer get_first()        const  {  return *m_node;  }
-   BOOST_CONTAINER_NODISCARD inline Pointer get_last()         const  {  return *m_node + get_block_ssize(); }
+   BOOST_CONTAINER_NODISCARD BOOST_CONTAINER_FORCEINLINE Pointer get_cur()          const  {  return m_cur;  }
+   BOOST_CONTAINER_NODISCARD BOOST_CONTAINER_FORCEINLINE index_pointer get_node()   const  {  return m_node;  }
+   BOOST_CONTAINER_NODISCARD BOOST_CONTAINER_FORCEINLINE Pointer get_first()        const  {  return *m_node;  }
+   BOOST_CONTAINER_NODISCARD BOOST_CONTAINER_FORCEINLINE Pointer get_last()         const  {  return *m_node + get_block_ssize(); }
 
    inline deque_iterator(val_alloc_ptr x, index_pointer y) BOOST_NOEXCEPT_OR_NOTHROW
       : m_cur(x), m_node(y)
@@ -247,10 +253,10 @@ class deque_iterator
       return tmp;
    }
 
-//Some GCC versions issue bogus warnings about array bounds here
-#if defined(BOOST_GCC) && (BOOST_GCC >= 40600)
-#  pragma GCC diagnostic ignored "-Warray-bounds"
-#endif
+   //Some GCC versions issue bogus warnings about array bounds here
+   #if defined(BOOST_GCC) && (BOOST_GCC >= 40600)
+   #  pragma GCC diagnostic ignored "-Warray-bounds"
+   #endif
 
    deque_iterator& operator--() BOOST_NOEXCEPT_OR_NOTHROW
    {
@@ -268,9 +274,9 @@ class deque_iterator
       return *this;
    }
 
-#if defined(BOOST_GCC) && (BOOST_GCC >= 40600)
-#pragma GCC diagnostic pop
-#endif
+   #if defined(BOOST_GCC) && (BOOST_GCC >= 40600)
+   #pragma GCC diagnostic pop
+   #endif
 
    inline deque_iterator operator--(int) BOOST_NOEXCEPT_OR_NOTHROW
    {
@@ -362,6 +368,59 @@ class deque_iterator
    {  this->m_node = new_node;  }
 };
 
+////////////////////////////////////////////////////////////////////////////
+//
+// Specialization of segmented_iterator_traits
+// 
+////////////////////////////////////////////////////////////////////////////
+
+template<class Iterator>
+struct segmented_iterator_traits;
+
+struct segmented_iterator_tag;
+
+template<class Pointer, bool IsConst, unsigned BlockBytes, unsigned BlockSize, class StoredSizeType>
+struct segmented_iterator_traits< deque_iterator<Pointer, IsConst, BlockBytes, BlockSize, StoredSizeType> >
+{
+   typedef segmented_iterator_tag                     is_segmented_iterator;
+   typedef deque_iterator<Pointer, IsConst, BlockBytes, BlockSize, StoredSizeType> iterator;
+
+   typedef typename iterator::val_alloc_ptr local_iterator;
+   typedef typename iterator::index_pointer segment_iterator;
+
+   BOOST_CONTAINER_FORCEINLINE static segment_iterator segment(iterator it)
+   { return it.get_node(); }
+
+   BOOST_CONTAINER_FORCEINLINE static local_iterator   local(iterator it)
+   { return it.get_cur(); }
+
+   BOOST_CONTAINER_FORCEINLINE static iterator compose(segment_iterator s, local_iterator l)
+   {
+      if (BOOST_UNLIKELY(s && l == (end)(s))) {
+         ++s;
+         l = *s;
+      }
+      return iterator(l, s);
+   }
+
+   BOOST_CONTAINER_FORCEINLINE static local_iterator begin(segment_iterator s)
+   {
+      BOOST_ASSERT(s != segment_iterator());
+      return *s;
+   }
+
+   BOOST_CONTAINER_FORCEINLINE static local_iterator end(segment_iterator s)
+   {
+      BOOST_ASSERT(s != segment_iterator());
+      return *s + iterator::get_block_size();
+   }
+};
+
+////////////////////////////////////////////////////////////////////////////
+//
+//                            get_deque_opt
+// 
+////////////////////////////////////////////////////////////////////////////
 
 template<class Options, class AllocatorSizeType>
 struct get_deque_opt
@@ -376,6 +435,12 @@ struct get_deque_opt<void, AllocatorSizeType>
 {
    typedef deque_opt<deque_null_opt::block_bytes, deque_null_opt::block_size, AllocatorSizeType, deque_null_opt::reservable> type;
 };
+
+////////////////////////////////////////////////////////////////////////////
+//
+//                            deque_members_holder
+// 
+////////////////////////////////////////////////////////////////////////////
 
 // External members holder: holds m_start_off when not single-ended; specialization for single-ended has no start offset member.
 template <class Allocator, class StoredSizeType, bool SingleEnded>
@@ -485,6 +550,12 @@ struct deque_members_holder<Allocator, StoredSizeType, true> : Allocator
    BOOST_CONTAINER_FORCEINLINE void dec_start(size_type) BOOST_NOEXCEPT_OR_NOTHROW
    {}
 };
+
+////////////////////////////////////////////////////////////////////////////
+//
+//                            deque_base
+// 
+////////////////////////////////////////////////////////////////////////////
 
 // Deque base class.  It has two purposes.  First, its constructor
 //  and destructor allocate (but don't initialize) storage.  This makes
@@ -1094,6 +1165,12 @@ class deque_base
    }
 
 };
+
+////////////////////////////////////////////////////////////////////////////
+//
+//                            deque_impl
+// 
+////////////////////////////////////////////////////////////////////////////
 
 template <class T, class Allocator, bool SingleEnded, class Options>
 class deque_impl : protected deque_base<typename real_allocator<T, Allocator>::type, typename get_deque_opt<Options, typename allocator_traits<typename real_allocator<T, Allocator>::type>::size_type>::type, SingleEnded>
