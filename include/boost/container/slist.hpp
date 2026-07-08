@@ -299,7 +299,7 @@ class slist
    //! <b>Throws</b>: If allocator_type's default constructor
    //!
    //! <b>Complexity</b>: Linear to the elements x contains.
-   slist(const slist& x, const allocator_type &a)
+   slist(const slist& x, const BOOST_CONTAINER_DOC1ST(allocator_type, typename dtl::type_identity<allocator_type>::type) &a)
       : AllocHolder(a)
    { this->insert_after(this->cbefore_begin(), x.begin(), x.end()); }
 
@@ -309,7 +309,7 @@ class slist
    //! <b>Throws</b>: If allocation or value_type's copy constructor throws.
    //!
    //! <b>Complexity</b>: Constant if a == x.get_allocator(), linear otherwise.
-   slist(BOOST_RV_REF(slist) x, const allocator_type &a)
+   slist(BOOST_RV_REF(slist) x, const BOOST_CONTAINER_DOC1ST(allocator_type, typename dtl::type_identity<allocator_type>::type) &a)
       : AllocHolder(a)
    {
       slist & sr = x;
@@ -1683,10 +1683,16 @@ inline typename slist<T, A>::size_type erase_if(slist<T, A>& c, Pred pred)
 
 #ifndef BOOST_CONTAINER_NO_CXX17_CTAD
 
+//! <b>Deduction guide</b>: allows an `slist` to be constructed from the iterator
+//! range <code>[first, last)</code>, deducing the element type from the value type
+//! of `InpIt` and using the default allocator.
 template <typename InpIt>
 slist(InpIt, InpIt) ->
    slist<typename iterator_traits<InpIt>::value_type>;
 
+//! <b>Deduction guide</b>: allows an `slist` to be constructed from the iterator
+//! range <code>[first, last)</code>, deducing the element type from the value type
+//! of `InpIt` and taking the allocator type from the supplied allocator.
 template <typename InpIt, typename Allocator>
 slist(InpIt, InpIt, Allocator const&) ->
    slist<typename iterator_traits<InpIt>::value_type, Allocator>;

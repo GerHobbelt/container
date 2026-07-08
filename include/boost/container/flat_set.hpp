@@ -374,7 +374,7 @@ class flat_set
    //! <b>Effects</b>: Copy constructs a container using the specified allocator.
    //!
    //! <b>Complexity</b>: Linear in x.size().
-   inline flat_set(const flat_set& x, const allocator_type &a)
+   inline flat_set(const flat_set& x, const BOOST_CONTAINER_DOC1ST(allocator_type, typename dtl::type_identity<allocator_type>::type) &a)
       : tree_t(static_cast<const tree_t&>(x), a)
    {}
 
@@ -382,7 +382,7 @@ class flat_set
    //!                 Constructs *this using x's resources.
    //!
    //! <b>Complexity</b>: Constant if a == x.get_allocator(), linear otherwise
-   inline flat_set(BOOST_RV_REF(flat_set) x, const allocator_type &a)
+   inline flat_set(BOOST_RV_REF(flat_set) x, const BOOST_CONTAINER_DOC1ST(allocator_type, typename dtl::type_identity<allocator_type>::type) &a)
       : tree_t(BOOST_MOVE_BASE(tree_t, x), a)
    {}
 
@@ -1208,10 +1208,17 @@ inline typename flat_set<K, C, A>::size_type erase_if(flat_set<K, C, A>& c, Pred
 
 #ifndef BOOST_CONTAINER_NO_CXX17_CTAD
 
+//! <b>Deduction guide</b>: allows a `flat_set` to be constructed from the iterator
+//! range <code>[first, last)</code>, deducing the key type from the value type of
+//! `InputIterator` and using the default comparator and allocator.
 template <typename InputIterator>
 flat_set(InputIterator, InputIterator) ->
    flat_set< it_based_value_type_t<InputIterator> >;
 
+//! <b>Deduction guide</b>: allows a `flat_set` to be constructed from the iterator
+//! range <code>[first, last)</code>, deducing the key type from `InputIterator`. The
+//! trailing argument is used as the allocator if it is an allocator type, otherwise
+//! it is used as the comparator.
 template < typename InputIterator, typename AllocatorOrCompare>
     flat_set(InputIterator, InputIterator, AllocatorOrCompare const&) ->
     flat_set< it_based_value_type_t<InputIterator>
@@ -1227,6 +1234,9 @@ template < typename InputIterator, typename AllocatorOrCompare>
                 >::type
             >;
 
+//! <b>Deduction guide</b>: allows a `flat_set` to be constructed from the iterator
+//! range <code>[first, last)</code>, deducing the key type from `InputIterator` and
+//! taking the comparator and allocator types from the supplied arguments.
 template < typename InputIterator, typename Compare, typename Allocator
          , typename = dtl::require_nonallocator_t<Compare>
          , typename = dtl::require_allocator_t<Allocator>>
@@ -1235,11 +1245,18 @@ flat_set(InputIterator, InputIterator, Compare const&, Allocator const&) ->
            , Compare
            , Allocator>;
 
+//! <b>Deduction guide</b>: allows a `flat_set` to be constructed from an already
+//! ordered, unique iterator range <code>[first, last)</code>, deducing the key type
+//! from `InputIterator` and using the default comparator and allocator.
 template <typename InputIterator>
 flat_set(ordered_unique_range_t, InputIterator, InputIterator) ->
    flat_set< it_based_value_type_t<InputIterator>>;
 
 
+//! <b>Deduction guide</b>: allows a `flat_set` to be constructed from an already
+//! ordered, unique iterator range <code>[first, last)</code>, deducing the key type
+//! from `InputIterator`. The trailing argument is used as the allocator if it is an
+//! allocator type, otherwise it is used as the comparator.
 template < typename InputIterator, typename AllocatorOrCompare>
     flat_set(ordered_unique_range_t, InputIterator, InputIterator, AllocatorOrCompare const&) ->
     flat_set< it_based_value_type_t<InputIterator>
@@ -1255,6 +1272,10 @@ template < typename InputIterator, typename AllocatorOrCompare>
                 >::type
             >;
 
+//! <b>Deduction guide</b>: allows a `flat_set` to be constructed from an already
+//! ordered, unique iterator range <code>[first, last)</code>, deducing the key type
+//! from `InputIterator` and taking the comparator and allocator types from the
+//! supplied arguments.
 template < typename InputIterator, typename Compare, typename Allocator
          , typename = dtl::require_nonallocator_t<Compare>
          , typename = dtl::require_allocator_t<Allocator>>
@@ -1526,12 +1547,12 @@ class flat_multiset
    {}
 
    //! @copydoc ::boost::container::flat_set::flat_set(const flat_set &, const allocator_type &)
-   inline flat_multiset(const flat_multiset& x, const allocator_type &a)
+   inline flat_multiset(const flat_multiset& x, const BOOST_CONTAINER_DOC1ST(allocator_type, typename dtl::type_identity<allocator_type>::type) &a)
       : tree_t(static_cast<const tree_t&>(x), a)
    {}
 
    //! @copydoc ::boost::container::flat_set::flat_set(flat_set &&, const allocator_type &)
-   inline flat_multiset(BOOST_RV_REF(flat_multiset) x, const allocator_type &a)
+   inline flat_multiset(BOOST_RV_REF(flat_multiset) x, const BOOST_CONTAINER_DOC1ST(allocator_type, typename dtl::type_identity<allocator_type>::type) &a)
       : tree_t(BOOST_MOVE_BASE(tree_t, x), a)
    {}
 
@@ -1952,11 +1973,18 @@ inline typename flat_multiset<K, C, A>::size_type erase_if(flat_multiset<K, C, A
 
 #ifndef BOOST_CONTAINER_NO_CXX17_CTAD
 
+//! <b>Deduction guide</b>: allows a `flat_multiset` to be constructed from the
+//! iterator range <code>[first, last)</code>, deducing the key type from the value
+//! type of `InputIterator` and using the default comparator and allocator.
 template <typename InputIterator>
 flat_multiset(InputIterator, InputIterator) ->
    flat_multiset< it_based_value_type_t<InputIterator> >;
 
 
+//! <b>Deduction guide</b>: allows a `flat_multiset` to be constructed from the
+//! iterator range <code>[first, last)</code>, deducing the key type from
+//! `InputIterator`. The trailing argument is used as the allocator if it is an
+//! allocator type, otherwise it is used as the comparator.
 template < typename InputIterator, typename AllocatorOrCompare>
 flat_multiset(InputIterator, InputIterator, AllocatorOrCompare const&) ->
     flat_multiset < it_based_value_type_t<InputIterator>
@@ -1972,6 +2000,10 @@ flat_multiset(InputIterator, InputIterator, AllocatorOrCompare const&) ->
                       >::type
                   >;
 
+//! <b>Deduction guide</b>: allows a `flat_multiset` to be constructed from the
+//! iterator range <code>[first, last)</code>, deducing the key type from
+//! `InputIterator` and taking the comparator and allocator types from the supplied
+//! arguments.
 template < typename InputIterator, typename Compare, typename Allocator
          , typename = dtl::require_nonallocator_t<Compare>
          , typename = dtl::require_allocator_t<Allocator>>
@@ -1980,10 +2012,17 @@ flat_multiset(InputIterator, InputIterator, Compare const&, Allocator const&) ->
            , Compare
            , Allocator>;
 
+//! <b>Deduction guide</b>: allows a `flat_multiset` to be constructed from an already
+//! ordered iterator range <code>[first, last)</code>, deducing the key type from
+//! `InputIterator` and using the default comparator and allocator.
 template <typename InputIterator>
 flat_multiset(ordered_range_t, InputIterator, InputIterator) ->
    flat_multiset< it_based_value_type_t<InputIterator>>;
 
+//! <b>Deduction guide</b>: allows a `flat_multiset` to be constructed from an already
+//! ordered iterator range <code>[first, last)</code>, deducing the key type from
+//! `InputIterator`. The trailing argument is used as the allocator if it is an
+//! allocator type, otherwise it is used as the comparator.
 template < typename InputIterator, typename AllocatorOrCompare>
 flat_multiset(ordered_range_t, InputIterator, InputIterator, AllocatorOrCompare const&) ->
     flat_multiset < it_based_value_type_t<InputIterator>
@@ -1999,6 +2038,10 @@ flat_multiset(ordered_range_t, InputIterator, InputIterator, AllocatorOrCompare 
                       >::type
                   >;
 
+//! <b>Deduction guide</b>: allows a `flat_multiset` to be constructed from an already
+//! ordered iterator range <code>[first, last)</code>, deducing the key type from
+//! `InputIterator` and taking the comparator and allocator types from the supplied
+//! arguments.
 template < typename InputIterator, typename Compare, typename Allocator
          , typename = dtl::require_nonallocator_t<Compare>
          , typename = dtl::require_allocator_t<Allocator>>

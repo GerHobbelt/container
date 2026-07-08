@@ -44,46 +44,6 @@ namespace detail_algo {
 // is optimised away, giving the same code as an unbounded loop.
 //////////////////////////////////////////////////////////////////////////////
 
-#if defined(BOOST_CONTAINER_SEGMENTED_LOOP_UNROLLING)
-
-template <class SrcIter, class SrcSent, class Size, class DstIter, class DstSent>
-BOOST_CONTAINER_FORCEINLINE
-segduo<SrcIter, DstIter> segmented_copy_n_src_dst_bounded
-   (SrcIter first, SrcSent last, Size& BOOST_RESTRICT count, DstIter dst_first, DstSent dst_last)
-{
-   while(count >= Size(4)) {
-      if(dst_first == dst_last || first == last) goto out_path;
-      *dst_first = *first; ++first; ++dst_first; --count;
-      if(dst_first == dst_last || first == last) goto out_path;
-      *dst_first = *first; ++first; ++dst_first; --count;
-      if(dst_first == dst_last || first == last) goto out_path;
-      *dst_first = *first; ++first; ++dst_first; --count;
-      if(dst_first == dst_last || first == last) goto out_path;
-      *dst_first = *first; ++first; ++dst_first; --count;
-   }
-
-   switch(count) {
-      case 3:
-         if(dst_first == dst_last || first == last) goto out_path;
-         *dst_first = *first; ++first; ++dst_first; --count;
-         BOOST_FALLTHROUGH;
-      case 2:
-         if(dst_first == dst_last || first == last) goto out_path;
-         *dst_first = *first; ++first; ++dst_first; --count;
-         BOOST_FALLTHROUGH;
-      case 1:
-         if(dst_first == dst_last || first == last) goto out_path;
-         *dst_first = *first; ++first; ++dst_first; --count;
-         BOOST_FALLTHROUGH;
-      default:
-         break;
-   }
-   out_path:
-   return segduo<SrcIter, DstIter>(first, dst_first);
-}
-
-#else
-
 template <class SrcIter, class SrcSent, class Size, class DstIter, class DstSent>
 BOOST_CONTAINER_FORCEINLINE segduo<SrcIter, DstIter>
 segmented_copy_n_src_dst_bounded
@@ -100,23 +60,15 @@ segmented_copy_n_src_dst_bounded
    return segduo<SrcIter, DstIter>(first, dst_first);
 }
 
-#endif   //BOOST_CONTAINER_SEGMENTED_LOOP_UNROLLING
-
 template <class SrcIter, class SrcSent, class Size, class DstIter, class DstSent>
 BOOST_CONTAINER_FORCEINLINE
-#if defined(BOOST_CONTAINER_SEGMENTED_ENABLE_DUAL_RA_OPTIMIZATION)
    typename iterator_disable_if_tag
       <DstIter, std::random_access_iterator_tag, segduo<SrcIter, DstIter> >::type
-#else
-segduo<SrcIter, DstIter>
-#endif
 segmented_copy_n_dst_bounded
    (SrcIter first, SrcSent last, Size& BOOST_RESTRICT count, DstIter dst_first, DstSent dst_last, const non_segmented_iterator_tag &)
 {
    return (segmented_copy_n_src_dst_bounded)(first, last, count, dst_first, dst_last);
 }
-
-#if defined(BOOST_CONTAINER_SEGMENTED_ENABLE_DUAL_RA_OPTIMIZATION)
 
 template <class RASrcIter, class SrcSent, class Size, class RADstIter>
 BOOST_CONTAINER_FORCEINLINE
@@ -138,8 +90,6 @@ segmented_copy_n_dst_bounded
    return r;
 }
 
-#endif   //BOOST_CONTAINER_SEGMENTED_ENABLE_DUAL_RA_OPTIMIZATION
-
 template <class SrcIter, class SrcSent, class Size, class SegDstIter>
 segduo<SrcIter, SegDstIter> segmented_copy_n_dst_bounded
    (SrcIter first, SrcSent last, Size& BOOST_RESTRICT count, SegDstIter dst_first, SegDstIter dst_last, const segmented_iterator_tag &)
@@ -149,32 +99,31 @@ segduo<SrcIter, SegDstIter> segmented_copy_n_dst_bounded
    typedef typename dst_traits::segment_iterator  dst_segment_iterator;
    typedef typename segmented_iterator_traits<dst_local_iterator>::is_segmented_iterator dst_is_local_seg_t;
 
-   dst_segment_iterator       sfirst = dst_traits::segment(dst_first);
-   const dst_segment_iterator slast  = dst_traits::segment(dst_last);
+   dst_segment_iterator       sdfirst = dst_traits::segment(dst_first);
+   const dst_segment_iterator sdlast  = dst_traits::segment(dst_last);
 
-   if(sfirst == slast) {
+   if(sdfirst == sdlast) {
       segduo<SrcIter, dst_local_iterator> r = (segmented_copy_n_dst_bounded)
          (first, last, count, dst_traits::local(dst_first), dst_traits::local(dst_last), dst_is_local_seg_t());
-      return segduo<SrcIter, SegDstIter>(r.first, dst_traits::compose(sfirst, r.second));
+      return segduo<SrcIter, SegDstIter>(r.first, dst_traits::compose(sdfirst, r.second));
    }
    else {
       segduo<SrcIter, dst_local_iterator> r = (segmented_copy_n_dst_bounded)
-         (first, last, count, dst_traits::local(dst_first), dst_traits::end(sfirst), dst_is_local_seg_t());
+         (first, last, count, dst_traits::local(dst_first), dst_traits::end(sdfirst), dst_is_local_seg_t());
       first = r.first;
-      if(count == 0 || first == last)
-         return segduo<SrcIter, SegDstIter>(first, dst_traits::compose(sfirst, r.second));
+      if (count != 0 && first != last) {
+         for (++sdfirst; sdfirst != sdlast; ++sdfirst) {
+            r = (segmented_copy_n_dst_bounded)
+               (first, last, count, dst_traits::begin(sdfirst), dst_traits::end(sdfirst), dst_is_local_seg_t());
+            first = r.first;
+            if (count == 0 || first == last)
+               return segduo<SrcIter, SegDstIter>(first, dst_traits::compose(sdfirst, r.second));
+         }
 
-      for(++sfirst; sfirst != slast; ++sfirst) {
          r = (segmented_copy_n_dst_bounded)
-            (first, last, count, dst_traits::begin(sfirst), dst_traits::end(sfirst), dst_is_local_seg_t());
-         first = r.first;
-         if(count == 0 || first == last)
-            return segduo<SrcIter, SegDstIter>(first, dst_traits::compose(sfirst, r.second));
+            (first, last, count, dst_traits::begin(sdlast), dst_traits::local(dst_last), dst_is_local_seg_t());
       }
-
-      r = (segmented_copy_n_dst_bounded)
-         (first, last, count, dst_traits::begin(slast), dst_traits::local(dst_last), dst_is_local_seg_t());
-      return segduo<SrcIter, SegDstIter>(r.first, dst_traits::compose(sfirst, r.second));
+      return segduo<SrcIter, SegDstIter>(r.first, dst_traits::compose(sdfirst, r.second));
    }
 }
 
@@ -350,7 +299,6 @@ OutIter segmented_copy_n(InIter first, Size count, OutIter result)
    return detail_algo::segmented_copy_n_dispatch(first, count, result,
       typename traits::is_segmented_iterator(), typename iterator_traits<InIter>::iterator_category());
 }
-
 
 } // namespace container
 } // namespace boost
