@@ -15,6 +15,9 @@
 #endif
 
 #include <memory>
+#ifdef _MSC_VER
+#pragma warning(disable : 4530) // C++ exception handler used, but unwind semantics are not enabled
+#endif
 #include <iostream>
 
 #include <boost/container/vector.hpp>
@@ -25,9 +28,11 @@
 #include "expand_bwd_test_allocator.hpp"
 #include "expand_bwd_test_template.hpp"
 #include "propagate_allocator_test.hpp"
+#include "void_allocator_test.hpp"
 #include "vector_test.hpp"
 #include "default_init_test.hpp"
 #include "../../intrusive/test/iterator_test.hpp"
+#include "unqualified_swap_test.hpp"
 
 using namespace boost::container;
 
@@ -236,8 +241,23 @@ BOOST_CONTAINER_STATIC_ASSERT_MSG
 //Test the expected sizeof()
 BOOST_CONTAINER_STATIC_ASSERT_MSG(3*sizeof(void*) == sizeof(vector<int>), "sizeof has an unexpected value");
 
+bool test_unqualified_swap()
+{
+   namespace us = boost_container_test_unqualified_swap;
+   {  typedef boost::container::vector<int> cont;
+      cont a;  a.push_back(1);  a.push_back(2);
+      cont b;  b.push_back(7);  b.push_back(8);  b.push_back(9);
+      if(!us::test_unqualified_swap(a, b))
+         return false;
+   }
+   return true;
+}
+
 int main()
 {
+   if(!test_unqualified_swap())
+      return 1;
+
    {
       const std::size_t positions_length = 10;
       std::size_t positions[positions_length];
@@ -266,6 +286,16 @@ int main()
       vector<recursive_vector> move_assign;
       move_assign = boost::move(move_ctor);
       move_assign.swap(original);
+   }
+
+   ////////////////////////////////////
+   //    Void value_type allocator
+   ////////////////////////////////////
+   if(!test::test_void_allocator
+         < vector<int, new_allocator<void> >
+         , new_allocator<int> >()) {
+      std::cerr << "test_void_allocator vector failed" << std::endl;
+      return 1;
    }
 
    ////////////////////////////////////

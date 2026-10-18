@@ -27,6 +27,7 @@
 #include <boost/container/detail/pool_common.hpp>
 #include <boost/move/detail/to_raw_pointer.hpp>
 #include <boost/move/detail/force_ptr.hpp>
+#include <boost/move/adl_move_swap.hpp>
 #include <boost/container/detail/type_traits.hpp>
 
 #include <boost/intrusive/pointer_traits.hpp>
@@ -180,7 +181,7 @@ private:
 };
 
 //This class uses packed_3n_bits_ref to store overalignment
-//values maintatin the ABI, since ABI-sensitive libraries like Interprocess
+//values maintaining the ABI, since ABI-sensitive libraries like Interprocess
 //rely on this type and types without overalignment must continue working
 //as before.
 template<class SegmentManagerBase>
@@ -342,14 +343,12 @@ class private_node_pool_impl
    //!Deallocates all the free blocks of memory. Never throws
    void deallocate_free_blocks()
    {
-      typedef typename free_nodes_t::iterator nodelist_iterator;
       typename blockslist_t::iterator bit(m_blocklist.before_begin()),
                                       it(m_blocklist.begin()),
                                       itend(m_blocklist.end());
+      //The free node lists caches the last nodeso splicing O(1)
       free_nodes_t backup_list;
-      nodelist_iterator backup_list_last = backup_list.before_begin();
 
-      //Execute the algorithm and get an iterator to the last value
       packed_3n_bits_ref_t packer(m_real_node_size, m_nodes_per_block, m_allocated);
       size_type real_node_size   = packer.low_unpacked();
       size_type nodes_per_block  = packer.high1_unpacked();
@@ -360,11 +359,10 @@ class private_node_pool_impl
          //Collect all the nodes from the block pointed by it
          //and push them in the list
          free_nodes_t free_nodes;
-         nodelist_iterator last_it = free_nodes.before_begin();
          const void *addr = get_block_from_hook(&*it, blocksize);
 
          m_freelist.remove_and_dispose_if
-            (is_between(addr, blocksize), push_in_list(free_nodes, last_it));
+            (is_between(addr, blocksize), push_in_list(free_nodes));
 
          //If the number of nodes is equal to nodes_per_block
          //this means that the block can be deallocated
@@ -377,17 +375,7 @@ class private_node_pool_impl
          //Otherwise, insert them in the backup list, since the
          //next "remove_if" does not need to check them again.
          else{
-            //Assign the iterator to the last value if necessary
-            if(backup_list.empty() && !m_freelist.empty()){
-               backup_list_last = last_it;
-            }
-            //Transfer nodes. This is constant time.
-            backup_list.splice_after
-               ( backup_list.before_begin()
-               , free_nodes
-               , free_nodes.before_begin()
-               , last_it
-               , free_nodes.size());
+            backup_list.splice_after(backup_list.before_begin(), free_nodes);
             bit = it;
             ++it;
          }
@@ -396,12 +384,7 @@ class private_node_pool_impl
       BOOST_ASSERT(m_freelist.empty());
 
       //Now pass all the node to the free list again
-      m_freelist.splice_after
-         ( m_freelist.before_begin()
-         , backup_list
-         , backup_list.before_begin()
-         , backup_list_last
-         , backup_list.size());
+      m_freelist.splice_after(m_freelist.before_begin(), backup_list);
    }
 
    inline size_type num_free_nodes()
@@ -434,31 +417,25 @@ class private_node_pool_impl
    {
       BOOST_ASSERT(this->get_real_node_size() == other.get_real_node_size());
       BOOST_ASSERT(this->get_real_num_node() == other.get_real_num_node());
-      std::swap(mp_segment_mngr_base, other.mp_segment_mngr_base);
+      ::boost::adl_move_swap(mp_segment_mngr_base, other.mp_segment_mngr_base);
       m_blocklist.swap(other.m_blocklist);
       m_freelist.swap(other.m_freelist);
-      std::swap(m_allocated, other.m_allocated);
+      ::boost::adl_move_swap(m_allocated, other.m_allocated);
    }
 
    private:
 
    struct push_in_list
    {
-      push_in_list(free_nodes_t &l, typename free_nodes_t::iterator &it)
-         :  slist_(l), last_it_(it)
+      explicit push_in_list(free_nodes_t &l)
+         :  slist_(l)
       {}
 
       void operator()(typename free_nodes_t::pointer p) const
-      {
-         slist_.push_front(*p);
-         if(slist_.size() == 1){ //Cache last element
-            ++last_it_ = slist_.begin();
-         }
-      }
+      {  slist_.push_front(*p);  }
 
       private:
       free_nodes_t &slist_;
-      typename free_nodes_t::iterator &last_it_;
    };
 
    struct is_between

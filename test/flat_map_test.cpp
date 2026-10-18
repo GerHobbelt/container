@@ -18,10 +18,12 @@
 #include "movable_int.hpp"
 #include "flat_map_test.hpp"
 #include "propagate_allocator_test.hpp"
+#include "void_allocator_test.hpp"
 #include "container_common_tests.hpp"
 #include "emplace_test.hpp"
 #include "../../intrusive/test/iterator_test.hpp"
 #include "flat_map_test.hpp"
+#include "unqualified_swap_test.hpp"
 
 #include <map>
 #include <utility>
@@ -310,10 +312,66 @@ bool test_heterogeneous_lookup_by_partial_key()
    return true;
 }
 
+//try_emplace and operator[] with a sequence whose allocator does not understand
+//Boost.Container construction tags (try_emplace_t)
+bool test_try_emplace_std_sequence()
+{
+   //Old GCCs have problems (compiler bugs) with std::vector and flat_xxx
+   #if defined(BOOST_CONTAINER_STD_PAIR_IS_MOVABLE) && (!defined(BOOST_GCC) || (BOOST_GCC >= 50000))
+   typedef flat_map<int, int, std::less<int>, std::vector<std::pair<int, int> > > map_t;
+   map_t m;
+   m[3] = 30;
+   if(m[1] != 0)
+      return false;
+   std::pair<map_t::iterator, bool> r = m.try_emplace(2, 20);
+   if(!r.second || r.first->second != 20)
+      return false;
+   r = m.try_emplace(2, 200);
+   if(r.second || r.first->second != 20)
+      return false;
+   map_t::iterator it = m.try_emplace(m.end(), 4, 40);
+   if(it->first != 4 || it->second != 40)
+      return false;
+   it = m.try_emplace(m.begin(), 0);
+   if(it->first != 0 || it->second != 0)
+      return false;
+   const int expected_keys[]   = { 0, 1, 2, 3, 4 };
+   const int expected_values[] = { 0, 0, 20, 30, 40 };
+   if(m.size() != 5u)
+      return false;
+   for(std::size_t i = 0; i != 5u; ++i){
+      if(m.nth(i)->first != expected_keys[i] || m.nth(i)->second != expected_values[i])
+         return false;
+   }
+   #endif
+   return true;
+}
+
 }}}   //namespace boost::container::test
+
+bool test_unqualified_swap()
+{
+   namespace us = boost_container_test_unqualified_swap;
+   {  typedef boost::container::flat_map<int, int> cont;
+      cont a;  a.insert(cont::value_type(1, 10));  a.insert(cont::value_type(2, 20));
+      cont b;  b.insert(cont::value_type(7, 70));  b.insert(cont::value_type(8, 80));
+      if(!us::test_unqualified_swap(a, b))
+         return false;
+   }
+   {  typedef boost::container::flat_multimap<int, int> cont;
+      cont a;  a.insert(cont::value_type(1, 10));  a.insert(cont::value_type(2, 20));
+      cont b;  b.insert(cont::value_type(7, 70));  b.insert(cont::value_type(8, 80));
+      if(!us::test_unqualified_swap(a, b))
+         return false;
+   }
+   return true;
+}
 
 int main()
 {
+   if(!test_unqualified_swap())
+      return 1;
+
    using namespace boost::container::test;
 
    //Allocator argument container
@@ -363,6 +421,25 @@ int main()
 
    if (!test_heterogeneous_lookup_by_partial_key())
       return 1;
+
+   if (!test_try_emplace_std_sequence())
+      return 1;
+
+   if (!test::test_function_pointer_comparator
+         < flat_map<int, int, bool(*)(int, int)>
+         , flat_multimap<int, int, bool(*)(int, int)>
+         >())
+      return 1;
+
+   ////////////////////////////////////
+   //    Void value_type allocator
+   ////////////////////////////////////
+   if(!test::test_void_allocator
+         < flat_map<int, int, std::less<int>, new_allocator<void> >
+         , new_allocator< std::pair<int, int> > >()) {
+      std::cerr << "test_void_allocator flat_map failed" << std::endl;
+      return 1;
+   }
 
    ////////////////////////////////////
    //    Testing allocator implementations

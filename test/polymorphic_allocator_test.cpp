@@ -9,7 +9,7 @@
 //////////////////////////////////////////////////////////////////////////////
 #include <boost/container/pmr/polymorphic_allocator.hpp>
 #include <boost/container/pmr/global_resource.hpp>
-#include <boost/core/lightweight_test.hpp>
+#include "lightweight_test.hpp"
 
 #include "derived_from_memory_resource.hpp"
 #include "propagation_test_allocator.hpp"
@@ -62,6 +62,27 @@ void test_allocate()
    BOOST_TEST(d.do_allocate_bytes == 2*sizeof(int));
    BOOST_TEST(d.do_allocate_alignment == dtl::alignment_of<int>::value);
    p.deallocate(ptr, 2);   //To make [[nodiscard]] happy
+}
+
+//n * sizeof(T) overflows: throw bad_alloc and do not call the resource
+void test_allocate_overflow()
+{
+   #ifndef BOOST_NO_EXCEPTIONS
+   derived_from_memory_resource d;
+   polymorphic_allocator<long long> p(&d);
+   d.reset();
+   const std::size_t max_n = std::size_t(-1)/sizeof(long long);
+   BOOST_TEST_THROWS((void)p.allocate(max_n + 1u), boost::container::bad_alloc_t);
+   BOOST_TEST_THROWS((void)p.allocate(std::size_t(-1)), boost::container::bad_alloc_t);
+   BOOST_TEST(d.do_allocate_called == false);
+   //The biggest n that does not overflow is passed to the resource
+   long long dummy;
+   d.do_allocate_return = &dummy;
+   long long *const ptr = p.allocate(max_n);
+   BOOST_TEST(d.do_allocate_called == true);
+   BOOST_TEST(d.do_allocate_bytes == max_n*sizeof(long long));
+   p.deallocate(ptr, max_n);
+   #endif
 }
 
 void test_deallocate()
@@ -159,7 +180,8 @@ void test_destroy()
    char_holder ch;
    polymorphic_allocator<int> p;
    BOOST_TEST(char_holder::destructor_called == false);
-   p.destroy(&ch);
+   //polymorphic_allocator has no destroy member (LWG 3036): allocator_traits calls the destructor
+   allocator_traits< polymorphic_allocator<int> >::destroy(p, &ch);
    BOOST_TEST(char_holder::destructor_called == true);
 }
 
@@ -187,6 +209,7 @@ int main()
    test_copy_constructor();
    test_copy_assignment();
    test_allocate();
+   test_allocate_overflow();
    test_deallocate();
    test_construct();
    test_destroy();

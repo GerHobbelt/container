@@ -20,9 +20,10 @@
 
 #include <boost/container/detail/config_begin.hpp>
 #include <boost/container/detail/workaround.hpp>
-#include <boost/container/experimental/segmented_iterator_traits.hpp>
+#include <boost/container/experimental/detail/segmented_common_algo.hpp>
 #include <boost/container/experimental/segmented_copy.hpp>
 #include <boost/container/detail/iterator.hpp>
+#include <cstddef>
 
 namespace boost {
 namespace container {
@@ -49,19 +50,33 @@ namespace detail_algo {
 template <class Iter1, class Sent1, class Iter2, class Sent2, class DstIter, class DstSent,
           class Comp, class DstTag, class SrcCat>
 BOOST_CONTAINER_FORCEINLINE
-typename algo_enable_if_c<!DstTag::value, segtrio<Iter1, Iter2, DstIter> >::type
+typename algo_enable_if_c<!DstTag::value, segquartet<Iter1, Iter2, DstIter, bool> >::type
 set_symmetric_difference_dst_bounded
    (Iter1 first1, Sent1 last1, Iter2 first2, Sent2 last2,
     DstIter dst_first, DstSent dst_last, Comp comp, DstTag, SrcCat)
 {
-   while(first1 != last1 && first2 != last2 && dst_first != dst_last) {
+   // The destination-full test guards the write, not the whole iteration: an
+   // element that produces no output still has to be consumed, so stopping
+   // with room left in the sources but none in the destination would leave
+   // the segmented walker unable to tell a full segment from an exhausted
+   // destination.  With unreachable_sentinel_t the test folds away as before.
+   bool src_done = true;
+   while(first1 != last1 && first2 != last2) {
       if (comp(*first1, *first2)) {
+         if(BOOST_UNLIKELY(dst_first == dst_last)) {
+            src_done = false;
+            break;
+         }
          *dst_first = *first1;
          ++first1;
          ++dst_first;
       }
       else {
          if (comp(*first2, *first1)) {
+            if(BOOST_UNLIKELY(dst_first == dst_last)) {
+               src_done = false;
+               break;
+            }
             *dst_first = *first2;
             ++dst_first;
          }
@@ -71,7 +86,114 @@ set_symmetric_difference_dst_bounded
          ++first2;
       }
    }
-   return segtrio<Iter1, Iter2, DstIter>(first1, first2, dst_first);
+   return segquartet<Iter1, Iter2, DstIter, bool>(first1, first2, dst_first, src_done);
+}
+
+template <std::size_t BlockSize, class RAIter1, class RAIter2, class DstIter, class Comp>
+BOOST_CONTAINER_FORCEINLINE segtrio<RAIter1, RAIter2, DstIter>
+set_symmetric_difference_blocks
+   (RAIter1 first1, RAIter1 last1, RAIter2 first2, RAIter2 last2,
+    DstIter dst_first, DstIter dst_last, Comp comp)
+{
+   typedef typename iterator_traits<RAIter1>::difference_type difference_type;
+   const difference_type block_size = static_cast<difference_type>(BlockSize);
+   while( (seg_srcs_dst_room_at_least)
+            (first1, last1, first2, last2, dst_first, dst_last, block_size)) {
+      BOOST_CONTAINER_SEGMENTED_AUTO_UNROLL
+      for(difference_type chunk = block_size; chunk; ) {
+         --chunk;
+         if (comp(*first1, *first2)) {
+            *dst_first = *first1;
+            ++first1;
+            ++dst_first;
+         }
+         else {
+            if (comp(*first2, *first1)) {
+               *dst_first = *first2;
+               ++dst_first;
+            }
+            else {
+               ++first1;
+            }
+            ++first2;
+         }
+      }
+   }
+   return segtrio<RAIter1, RAIter2, DstIter>(first1, first2, dst_first);
+}
+
+#if BOOST_CONTAINER_SEGMENTED_ENABLE_RA_SPECIALIZATIONS
+// Dual-RA fast path: processes fixed 32-element blocks free of boundary
+// checks, then finishes with the generic checked loop (SrcCat = int so this
+// overload cannot re-match).  Bounded destinations are enabled everywhere
+// (clang wins ~13-27%, MSVC ~10%, GCC neutral-to-positive).  Unbounded
+// destinations are enabled as well.
+template <class RAIter1, class RAIter2, class DstIter, class DstSent,
+          class Comp, class DstTag>
+BOOST_CONTAINER_FORCEINLINE
+typename algo_enable_if_c
+   < !DstTag::value && seg_is_ra_iterator<RAIter2>::value
+      && seg_is_ra_iterator<DstIter>::value
+   , segquartet<RAIter1, RAIter2, DstIter, bool> >::type
+set_symmetric_difference_dst_bounded
+   (RAIter1 first1, RAIter1 last1, RAIter2 first2, RAIter2 last2,
+    DstIter dst_first, DstIter dst_last, Comp comp, DstTag dst_tag,
+    const std::random_access_iterator_tag &)
+{
+   segtrio<RAIter1, RAIter2, DstIter> r = (set_symmetric_difference_blocks<32>)
+      (first1, last1, first2, last2, dst_first, dst_last, comp);
+   return (set_symmetric_difference_dst_bounded)
+      (r.first, last1, r.second, last2, r.third, dst_last, comp, dst_tag, int());
+}
+#endif   // BOOST_CONTAINER_SEGMENTED_ENABLE_RA_SPECIALIZATIONS
+
+template <class Iter1, class Sent1, class Iter2, class Sent2, class SegDstIter,
+          class Comp, class SrcCat>
+segquartet<Iter1, Iter2, SegDstIter, bool> set_symmetric_difference_dst_bounded
+   (Iter1 first1, Sent1 last1, Iter2 first2, Sent2 last2,
+    SegDstIter dst_first, SegDstIter dst_last, Comp comp,
+    segmented_iterator_tag, SrcCat)
+{
+   typedef segmented_iterator_traits<SegDstIter>  dst_traits;
+   typedef typename dst_traits::local_iterator    dst_local_iterator;
+   typedef typename dst_traits::segment_iterator  dst_segment_iterator;
+   typedef typename segmented_iterator_traits<dst_local_iterator>::is_segmented_iterator dst_is_local_seg_t;
+   typedef segquartet<Iter1, Iter2, dst_local_iterator, bool>  local_result_t;
+   typedef segquartet<Iter1, Iter2, SegDstIter, bool>          result_t;
+
+   dst_segment_iterator       sfirst = dst_traits::segment(dst_first);
+   const dst_segment_iterator slast  = dst_traits::segment(dst_last);
+
+   dst_local_iterator db = dst_traits::local(dst_first);
+
+   for(;;) {
+      //Partial segments (first and last) share this call site
+      const bool last_seg = sfirst == slast;
+      const dst_local_iterator de = last_seg ? dst_traits::local(dst_last) : dst_traits::end(sfirst);
+      {
+         const local_result_t r = (set_symmetric_difference_dst_bounded)
+            ( first1, last1, first2, last2, db
+            , de, comp, dst_is_local_seg_t(), SrcCat());
+         first1 = r.first;
+         first2 = r.second;
+         if(last_seg || BOOST_UNLIKELY(r.fourth))
+            return result_t(first1, first2, dst_traits::compose(sfirst, r.third), r.fourth);
+      }
+
+      //Middle segments keep their own call site: begin/end both come from
+      //sfirst, so the leaf can be specialised for full segments
+      for(++sfirst; sfirst != slast; ++sfirst) {
+         const local_result_t r = (set_symmetric_difference_dst_bounded)
+            ( first1, last1, first2, last2, dst_traits::begin(sfirst)
+            , dst_traits::end(sfirst), comp, dst_is_local_seg_t(), SrcCat());
+         first1 = r.first;
+         first2 = r.second;
+         if(BOOST_UNLIKELY(r.fourth))
+            return result_t(first1, first2, dst_traits::compose(sfirst, r.third), true);
+      }
+
+      db = dst_traits::begin(sfirst);
+   }
 }
 
 //////////////////////////////////////////////////////////////////////////////
@@ -89,9 +211,12 @@ segtrio<Iter1, Iter2, DstIter> set_symmetric_difference_until_exhausts
    (Iter1 first1, Sent1 last1, Iter2 first2, Sent2 last2, DstIter result, Comp comp,
     const Tag &, const Cat &src1_cat)
 {
-   return (set_symmetric_difference_dst_bounded)
+   //An unbounded destination can only stop on source exhaustion, so the leaf's
+   //flag is a constant here and drops out.
+   const segquartet<Iter1, Iter2, DstIter, bool> r = (set_symmetric_difference_dst_bounded)
       (first1, last1, first2, last2, result, unreachable_sentinel_t(),
        comp, non_segmented_iterator_tag(), src1_cat);
+   return segtrio<Iter1, Iter2, DstIter>(r.first, r.second, r.third);
 }
 
 template <class Iter1, class Sent1, class Iter2, class Sent2, class SegDstIter,
@@ -104,10 +229,10 @@ segtrio<Iter1, Iter2, SegDstIter> set_symmetric_difference_until_exhausts
    typedef typename dst_traits::local_iterator    dst_local_iterator;
    typedef typename dst_traits::segment_iterator  dst_segment_iterator;
    typedef typename segmented_iterator_traits<dst_local_iterator>::is_segmented_iterator dst_is_local_seg_t;
-   typedef segtrio<Iter1, Iter2, dst_local_iterator>  bounded_t;
+   typedef segquartet<Iter1, Iter2, dst_local_iterator, bool>  bounded_t;
    typedef segtrio<Iter1, Iter2, SegDstIter>          result_t;
 
-   if(first1 == last1 || first2 == last2)
+   if(BOOST_UNLIKELY(first1 == last1 || first2 == last2))
       return result_t(first1, first2, result);
 
    dst_segment_iterator dst_seg   = dst_traits::segment(result);
@@ -122,9 +247,16 @@ segtrio<Iter1, Iter2, SegDstIter> set_symmetric_difference_until_exhausts
       first2    = r.second;
       dst_local = r.third;
 
-      if(dst_local != dst_end) {
+      // Stop on source exhaustion, not on "the segment did not fill": when
+      // the output ends exactly on a segment boundary both hold at once, and
+      // stepping dst_seg then walks off the end of the destination.  compose()
+      // normalises a local iterator sitting on the segment end, the same way
+      // segmented_copy_dst_dispatch relies on.  fourth already answers that
+      // question, and gives source exhaustion priority on such a tie.
+      if(BOOST_UNLIKELY(r.fourth)) {
          return result_t(first1, first2, dst_traits::compose(dst_seg, dst_local));
       }
+      // dst segment full and both sources still live; advance to the next.
       ++dst_seg;
       dst_local = dst_traits::begin(dst_seg);
    }
@@ -142,16 +274,10 @@ BOOST_CONTAINER_FORCEINLINE segtrio<Iter1, Iter2, OutIter> set_symmetric_differe
    (Iter1 first1, Sent1 last1, Iter2 first2, Sent2 last2, OutIter result, Comp comp,
     non_segmented_iterator_tag, const Cat& src1_cat)
 {
-#if !defined(BOOST_CONTAINER_DISABLE_MULTI_SEGMENTED_ALGO)
    typedef segmented_iterator_traits<OutIter>  out_traits;
    typedef typename out_traits::is_segmented_iterator is_out_seg_t;
    return (set_symmetric_difference_until_exhausts)
       (first1, last1, first2, last2, result, comp, is_out_seg_t(), src1_cat);
-#else
-   return (set_symmetric_difference_dst_bounded)
-      (first1, last1, first2, last2, result, unreachable_sentinel_t(),
-       comp, non_segmented_iterator_tag(), src1_cat);
-#endif
 }
 
 template <class Iter1, class Sent1, class SegIter2, class OutIter, class Comp, class Cat>
@@ -167,39 +293,40 @@ segtrio<Iter1, SegIter2, OutIter> set_symmetric_difference_seg2_dispatch
    typedef segtrio<Iter1, src2_local_iterator, OutIter> local_result_t;
    typedef segtrio<Iter1, SegIter2, OutIter>            result_t;
 
-   if(first1 == last1 || first2 == last2)
+   if(BOOST_UNLIKELY(first1 == last1 || first2 == last2))
       return result_t(first1, first2, result);
 
    src2_segment_iterator       sf2 = src2_traits::segment(first2);
    const src2_segment_iterator sl2 = src2_traits::segment(last2);
    src2_local_iterator         lf2 = src2_traits::local(first2);
 
-   if(sf2 == sl2) {
-      local_result_t r = (set_symmetric_difference_seg2_dispatch)
-         (first1, last1, lf2, src2_traits::local(last2), result, comp,
-          src2_is_local_seg_t(), cat);
-      return result_t(r.first, src2_traits::compose(sf2, r.second), r.third);
-   }
-   else {
-      local_result_t r = (set_symmetric_difference_seg2_dispatch)
-         (first1, last1, lf2, src2_traits::end(sf2), result, comp,
-          src2_is_local_seg_t(), cat);
-      if (r.first == last1)
-         goto exit;
-
-      for(++sf2; sf2 != sl2; ++sf2) {
-         r = (set_symmetric_difference_seg2_dispatch)
-            (r.first, last1, src2_traits::begin(sf2), src2_traits::end(sf2),
-             r.third, comp, src2_is_local_seg_t(), cat);
-         if(r.first == last1)
-            goto exit;
+   for(;;) {
+      //Partial segments (first and last) share this call site
+      const bool last_seg = sf2 == sl2;
+      const src2_local_iterator le2 = last_seg ? src2_traits::local(last2) : src2_traits::end(sf2);
+      {
+         const local_result_t r = (set_symmetric_difference_seg2_dispatch)
+            (first1, last1, lf2, le2, result, comp,
+             src2_is_local_seg_t(), cat);
+         first1 = r.first;
+         result = r.third;
+         if (last_seg || BOOST_UNLIKELY(first1 == last1))
+            return result_t(first1, src2_traits::compose(sf2, r.second), result);
       }
 
-      r = (set_symmetric_difference_seg2_dispatch)
-         (r.first, last1, src2_traits::begin(sf2), src2_traits::local(last2),
-          r.third, comp, src2_is_local_seg_t(), cat);
-      exit:
-      return result_t(r.first, src2_traits::compose(sf2, r.second), r.third);
+      //Middle segments keep their own call site: begin/end both come from
+      //sf2, so the leaf can be specialised for full segments
+      for(++sf2; sf2 != sl2; ++sf2) {
+         const local_result_t r = (set_symmetric_difference_seg2_dispatch)
+            (first1, last1, src2_traits::begin(sf2), src2_traits::end(sf2),
+             result, comp, src2_is_local_seg_t(), cat);
+         first1 = r.first;
+         result = r.third;
+         if(BOOST_UNLIKELY(first1 == last1))
+            return result_t(first1, src2_traits::compose(sf2, r.second), result);
+      }
+
+      lf2 = src2_traits::begin(sf2);
    }
 }
 
@@ -216,18 +343,12 @@ BOOST_CONTAINER_FORCEINLINE segtrio<FwdIt, InIter2, OutIter> set_symmetric_diffe
     non_segmented_iterator_tag)
 {
    typedef sent_filter<FwdIt, Sent> sf1;
-#if !defined(BOOST_CONTAINER_DISABLE_MULTI_SEGMENTED_ALGO)
    typedef sent_filter<InIter2, Sent2> sf2;
 
    return (set_symmetric_difference_seg2_dispatch)
       (first1, last1, first2, last2, result, comp,
        typename sf2::seg_t(),
        typename sf1::cat_t());
-#else
-   return (set_symmetric_difference_until_exhausts)
-      (first1, last1, first2, last2, result, comp,
-       non_segmented_iterator_tag(), typename sf1::cat_t());
-#endif
 }
 
 template <class SegIt, class InIter2, class Sent2, class OutIter, class Comp>
@@ -243,34 +364,38 @@ segtrio<SegIt, InIter2, OutIter> set_symmetric_difference_scan
    typedef segtrio<local_iterator, InIter2, OutIter> local_result_t;
    typedef segtrio<SegIt, InIter2, OutIter>          result_t;
 
-   if(first == last || first2 == last2)
+   if(BOOST_UNLIKELY(first == last || first2 == last2))
       return result_t(first, first2, result);
 
    segment_iterator       scur  = traits::segment(first);
    segment_iterator const slast = traits::segment(last);
    local_iterator         lcur  = traits::local(first);
 
-   if(scur == slast) {
-      local_result_t r = set_symmetric_difference_scan
-         (lcur, traits::local(last), first2, last2, result, comp, is_local_seg_t());
-      return result_t(traits::compose(scur, r.first), r.second, r.third);
-   }
-   else {
-      local_result_t r = set_symmetric_difference_scan
-         (lcur, traits::end(scur), first2, last2, result, comp, is_local_seg_t());
-      if(r.second == last2)
-         return result_t(traits::compose(scur, r.first), r.second, r.third);
-
-      for(++scur; scur != slast; ++scur) {
-         r = set_symmetric_difference_scan
-            (traits::begin(scur), traits::end(scur), r.second, last2, r.third, comp, is_local_seg_t());
-         if(r.second == last2)
-            return result_t(traits::compose(scur, r.first), r.second, r.third);
+   for(;;) {
+      //Partial segments (first and last) share this call site
+      const bool last_seg = scur == slast;
+      const local_iterator le = last_seg ? traits::local(last) : traits::end(scur);
+      {
+         const local_result_t r = set_symmetric_difference_scan
+            (lcur, le, first2, last2, result, comp, is_local_seg_t());
+         first2 = r.second;
+         result = r.third;
+         if(last_seg || BOOST_UNLIKELY(first2 == last2))
+            return result_t(traits::compose(scur, r.first), first2, result);
       }
 
-      r = set_symmetric_difference_scan
-         (traits::begin(scur), traits::local(last), r.second, last2, r.third, comp, is_local_seg_t());
-      return result_t(traits::compose(scur, r.first), r.second, r.third);
+      //Middle segments keep their own call site: begin/end both come from
+      //scur, so the leaf can be specialised for full segments
+      for(++scur; scur != slast; ++scur) {
+         const local_result_t r = set_symmetric_difference_scan
+            (traits::begin(scur), traits::end(scur), first2, last2, result, comp, is_local_seg_t());
+         first2 = r.second;
+         result = r.third;
+         if(BOOST_UNLIKELY(first2 == last2))
+            return result_t(traits::compose(scur, r.first), first2, result);
+      }
+
+      lcur = traits::begin(scur);
    }
 }
 

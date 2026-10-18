@@ -20,7 +20,7 @@
 
 #include <boost/container/detail/config_begin.hpp>
 #include <boost/container/detail/workaround.hpp>
-#include <boost/container/experimental/segmented_iterator_traits.hpp>
+#include <boost/container/experimental/detail/segmented_common_algo.hpp>
 #include <boost/container/detail/iterators.hpp>
 
 namespace boost {
@@ -37,7 +37,7 @@ typename algo_enable_if_c<
    !Tag::value || is_sentinel<Sent, InpIter>::value, bool>::type
 segmented_none_of_dispatch(InpIter first, Sent last, Pred pred, Tag, Cat)
 {
-   BOOST_CONTAINER_SEGMENTED_UNROLL(4)
+   BOOST_CONTAINER_UNROLL(4)
    for(; first != last; ++first)
       if(pred(*first))
          return false;
@@ -57,24 +57,25 @@ bool segmented_none_of_dispatch
    segment_iterator       sfirst = traits::segment(first);
    const segment_iterator slast  = traits::segment(last);
 
-   if(sfirst == slast) {
-      if(!(segmented_none_of_dispatch)(traits::local(first), traits::local(last), pred, is_local_seg_t(), local_cat_t()))
+   local_iterator lb = traits::local(first);
+
+   for(;;) {
+      //Partial segments (first and last) share this call site
+      const bool last_seg = sfirst == slast;
+      const local_iterator le = last_seg ? traits::local(last) : traits::end(sfirst);
+      if(!(segmented_none_of_dispatch)(lb, le, pred, is_local_seg_t(), local_cat_t()))
          return false;
-   }
-   else {
-      //First segment
-      if(!(segmented_none_of_dispatch)(traits::local(first), traits::end(sfirst), pred, is_local_seg_t(), local_cat_t()))
-         return false;
-      //Middle segments
+      if(BOOST_UNLIKELY(last_seg))
+         return true;
+
+      //Middle segments keep their own call site: begin/end both come from
+      //sfirst, so the leaf can be specialised for full segments
       for (++sfirst; sfirst != slast; ++sfirst) {
          if(!(segmented_none_of_dispatch)(traits::begin(sfirst), traits::end(sfirst), pred, is_local_seg_t(), local_cat_t()))
             return false;
       }
-      //Last segment
-      if(!(segmented_none_of_dispatch)(traits::begin(slast), traits::local(last), pred, is_local_seg_t(), local_cat_t()))
-         return false;
+      lb = traits::begin(sfirst);
    }
-   return true;
 }
 
 } // namespace detail_algo

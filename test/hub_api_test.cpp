@@ -17,16 +17,26 @@ int main() { return 0; }
 #include <boost/config.hpp>
 #include <boost/config/workaround.hpp>
 #include <boost/container/hub.hpp>
+#include "void_allocator_test.hpp"
+#include <boost/container/new_allocator.hpp>
 #include <boost/container/pmr/hub.hpp>
 #include <boost/container/throw_exception.hpp>
 #include <boost/core/allocator_access.hpp>
-#include <boost/core/lightweight_test.hpp>
+#include "lightweight_test.hpp"
 #include <boost/core/pointer_traits.hpp>
 
 /* GCC on Darwin cannot parse the system <mach/message.h> header
  * (xnu_static_assert_struct_size uses Clang-only extensions).
  */
 #if defined(__GNUC__) && !defined(__clang__) && defined(__APPLE__)
+#define BOOST_CONTAINER_HUB_TEST_API_NO_INTERPROCESS
+#endif
+
+/* MSVC 14.5 (19.51) x86 crashes with an internal compiler error (C1001, compiler file
+ * p2/main.cpp line 262). See:
+ * https://developercommunity.visualstudio.com/t/C1001-in-x86-optimizer-p2maincpp:262/11155106
+ */
+#if defined(_M_IX86) && BOOST_WORKAROUND(BOOST_MSVC, >= 1951)
 #define BOOST_CONTAINER_HUB_TEST_API_NO_INTERPROCESS
 #endif
 
@@ -783,7 +793,15 @@ int main()
 
   test_ctad<boost::container::hub>();
 
-  return boost::report_errors();
+  
+   ////////////////////////////////////
+   //    Void value_type allocator
+   ////////////////////////////////////
+   BOOST_TEST((boost::container::test::test_void_allocator
+         < boost::container::hub<int, boost::container::new_allocator<void> >
+         , boost::container::new_allocator<int> >()));
+
+   return boost::report_errors();
 }
 
 #endif

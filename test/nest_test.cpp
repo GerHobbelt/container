@@ -9,7 +9,9 @@
 //////////////////////////////////////////////////////////////////////////////
 
 #include <boost/container/experimental/nest.hpp>
-#include <boost/core/lightweight_test.hpp>
+#include "void_allocator_test.hpp"
+#include <boost/container/new_allocator.hpp>
+#include "lightweight_test.hpp"
 #include <algorithm>
 #include <functional>
 #include <vector>
@@ -801,5 +803,13 @@ int main()
    #if !defined(BOOST_NO_CXX11_HDR_INITIALIZER_LIST)
    test_initializer_list_operations();
    #endif
+   
+   ////////////////////////////////////
+   //    Void value_type allocator
+   ////////////////////////////////////
+   BOOST_TEST((test::test_void_allocator
+         < nest<int, new_allocator<void> >
+         , new_allocator<int> >()));
+
    return boost::report_errors();
 }

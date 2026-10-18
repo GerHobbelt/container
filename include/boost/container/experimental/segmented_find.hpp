@@ -20,7 +20,7 @@
 
 #include <boost/container/detail/config_begin.hpp>
 #include <boost/container/detail/workaround.hpp>
-#include <boost/container/experimental/segmented_iterator_traits.hpp>
+#include <boost/container/experimental/detail/segmented_common_algo.hpp>
 #include <boost/container/detail/iterators.hpp>
 
 namespace boost {
@@ -37,7 +37,7 @@ typename algo_enable_if_c<
    !Tag::value || is_sentinel<Sent, InpIter>::value, InpIter>::type
 segmented_find_dispatch(InpIter first, Sent last, const T& BOOST_RESTRICT value, Tag, Cat)
 {
-   BOOST_CONTAINER_SEGMENTED_UNROLL(4)
+   BOOST_CONTAINER_UNROLL(4)
    for(; first != last; ++first)
       if(*first == value)
          break;
@@ -57,36 +57,28 @@ SegIter segmented_find_dispatch
    segment_iterator       sfirst = traits::segment(first);
    const segment_iterator slast  = traits::segment(last);
 
-   if(sfirst == slast) {
-      const local_iterator ll = traits::local(last);
-      const local_iterator r = (segmented_find_dispatch)(traits::local(first), ll, value, is_local_seg_t(), local_cat_t());
-      if (r != ll)
+   local_iterator lb = traits::local(first);
+
+   for(;;) {
+      //Partial segments (first and last) share this call site
+      const bool last_seg = sfirst == slast;
+      const local_iterator le = last_seg ? traits::local(last) : traits::end(sfirst);
+      const local_iterator r = (segmented_find_dispatch)(lb, le, value, is_local_seg_t(), local_cat_t());
+      if (r != le)
          return traits::compose(sfirst, r);
-   }
-   else {
-      //First segment
-      {
-         const local_iterator le = traits::end(sfirst);
-         const local_iterator r = (segmented_find_dispatch)(traits::local(first), le, value, is_local_seg_t(), local_cat_t());
-         if (r != le)
-            return traits::compose(sfirst, r);
-      }
-      //Middle segments
+      if(BOOST_UNLIKELY(last_seg))
+         return last;
+
+      //Middle segments keep their own call site: begin/end both come from
+      //sfirst, so the leaf can be specialised for full segments
       for (++sfirst; sfirst != slast; ++sfirst) {
-         const local_iterator le = traits::end(sfirst);
-         const local_iterator r = (segmented_find_dispatch)(traits::begin(sfirst), le, value, is_local_seg_t(), local_cat_t());
-         if (r != le)
-            return traits::compose(sfirst, r);
+         const local_iterator me = traits::end(sfirst);
+         const local_iterator mr = (segmented_find_dispatch)(traits::begin(sfirst), me, value, is_local_seg_t(), local_cat_t());
+         if (mr != me)
+            return traits::compose(sfirst, mr);
       }
-      //Last segment
-      {
-         const local_iterator ll = traits::local(last);
-         const local_iterator r = (segmented_find_dispatch)(traits::begin(slast), traits::local(last), value, is_local_seg_t(), local_cat_t());
-         if (r != ll)
-            return traits::compose(sfirst, r);
-      }
+      lb = traits::begin(sfirst);
    }
-   return last;
 }
 
 } // namespace detail_algo

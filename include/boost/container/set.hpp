@@ -59,7 +59,8 @@ namespace container {
 //!
 //! \tparam Key is the type to be inserted in the set, which is also the key_type
 //! \tparam Compare is the comparison functor used to order keys
-//! \tparam Allocator is the allocator to be used to allocate memory for this container
+//! \tparam Allocator is the allocator to be used to allocate memory for this container.
+//!   An allocator whose \c value_type is \c void is rebound to \c Key.
 //! \tparam Options is an packed option type generated using using boost::container::tree_assoc_options.
 template <class Key, class Compare = std::less<Key>, class Allocator = new_allocator<Key>, class Options = void>
 #else
@@ -350,8 +351,15 @@ class set
    //! <b>Effects</b>: Move constructs a set using the specified allocator.
    //!                 Constructs *this using x's resources.
    //!
+   //! <b>Throws</b>: Nothing if allocator_traits_type::is_always_equal::value is true and the
+   //!   copy constructor and swap of Compare do not throw. Otherwise, if allocation or
+   //!   value_type's move constructor throws.
+   //!
    //! <b>Complexity</b>: Constant if a == x.get_allocator(), linear otherwise.
    inline set(BOOST_RV_REF(set) x, const BOOST_CONTAINER_DOC1ST(allocator_type, typename dtl::type_identity<allocator_type>::type) &a)
+      BOOST_NOEXCEPT_IF(allocator_traits_type::is_always_equal::value &&
+                       dtl::is_nothrow_copy_constructible<Compare>::value &&
+                       dtl::is_nothrow_swappable<Compare>::value)
       : base_t(BOOST_MOVE_BASE(base_t, x), a)
    {}
 
@@ -539,6 +547,7 @@ class set
    //!
    //! <b>Throws</b>: If memory allocation throws or
    //!   Key's in-place constructor throws.
+   //!   If an exception is thrown, there are no effects.
    //!
    //! <b>Complexity</b>: Logarithmic.
    template <class... Args>
@@ -552,6 +561,9 @@ class set
    //!   should start to search.
    //!
    //! <b>Returns</b>: An iterator pointing to the element with key equivalent to the key of x.
+   //!
+   //! <b>Throws</b>: If memory allocation, the construction of the element or the comparison throws.
+   //!   If an exception is thrown, there are no effects.
    //!
    //! <b>Complexity</b>: Logarithmic.
    template <class... Args>
@@ -582,6 +594,9 @@ class set
    //!   if the insertion takes place, and the iterator component of the pair
    //!   points to the element with key equivalent to the key of x.
    //!
+   //! <b>Throws</b>: If memory allocation, the construction of the element or the comparison throws.
+   //!   If an exception is thrown, there are no effects.
+   //!
    //! <b>Complexity</b>: Logarithmic.
    std::pair<iterator, bool> insert(const value_type &x)
    {  return this->base_t::insert_unique_convertible(x); }
@@ -592,6 +607,9 @@ class set
    //! <b>Returns</b>: The bool component of the returned pair is true if and only
    //!   if the insertion takes place, and the iterator component of the pair
    //!   points to the element with key equivalent to the key of x.
+   //!
+   //! <b>Throws</b>: If memory allocation, the construction of the element or the comparison throws.
+   //!   If an exception is thrown, there are no effects.
    //!
    //! <b>Complexity</b>: Logarithmic.
    std::pair<iterator, bool> insert(value_type &&x)
@@ -606,6 +624,9 @@ class set
    //! <b>Returns</b>: The bool component of the returned pair is true if and only
    //!   if the insertion takes place, and the iterator component of the pair
    //!   points to the element with key equivalent to the key of x.
+   //!
+   //! <b>Throws</b>: If memory allocation, the construction of the element or the comparison throws.
+   //!   If an exception is thrown, there are no effects.
    //!
    //! <b>Complexity</b>: Logarithmic.
    template <class K>
@@ -627,6 +648,9 @@ class set
    //! <b>Returns</b>: An iterator pointing to the element with key equivalent
    //!   to the key of x.
    //!
+   //! <b>Throws</b>: If memory allocation, the construction of the element or the comparison throws.
+   //!   If an exception is thrown, there are no effects.
+   //!
    //! <b>Complexity</b>: Logarithmic in general, but amortized constant if t
    //!   is inserted right before p.
    iterator insert(const_iterator p, const value_type &x)
@@ -636,6 +660,9 @@ class set
    //!   p is a hint pointing to where the insert should start to search.
    //!
    //! <b>Returns</b>: An iterator pointing to the element with key equivalent to the key of x.
+   //!
+   //! <b>Throws</b>: If memory allocation, the construction of the element or the comparison throws.
+   //!   If an exception is thrown, there are no effects.
    //!
    //! <b>Complexity</b>: Logarithmic.
    iterator insert(const_iterator p, value_type &&x)
@@ -651,6 +678,9 @@ class set
    //!   p is a hint pointing to where the insert should start to search.
    //!
    //! <b>Returns</b>: An iterator pointing to the element with key equivalent to the key of x.
+   //!
+   //! <b>Throws</b>: If memory allocation, the construction of the element or the comparison throws.
+   //!   If an exception is thrown, there are no effects.
    //!
    //! <b>Complexity</b>: Logarithmic.
    template <class K>
@@ -696,10 +726,16 @@ class set
 #endif
 
    //! @copydoc ::boost::container::map::insert(node_type&&)
+   //!
+   //! <b>Throws</b>: If the comparison throws.
+   //!   If an exception is thrown, there are no effects.
    inline insert_return_type insert(BOOST_RV_REF_BEG_IF_CXX11 node_type BOOST_RV_REF_END_IF_CXX11 nh)
    {  return this->base_t::insert_unique_node(boost::move(nh));  }
 
    //! @copydoc ::boost::container::map::insert(const_iterator, node_type&&)
+   //!
+   //! <b>Throws</b>: If the comparison throws.
+   //!   If an exception is thrown, there are no effects.
    inline insert_return_type insert(const_iterator hint, BOOST_RV_REF_BEG_IF_CXX11 node_type BOOST_RV_REF_END_IF_CXX11 nh)
    {  return this->base_t::insert_unique_node(hint, boost::move(nh));  }
 
@@ -856,7 +892,9 @@ class set
    template<typename K>
    BOOST_CONTAINER_NODISCARD inline
       size_type count(const K& x) const
-   {  return static_cast<size_type>(this->find(x) != this->cend());  }
+      //Don't use find() != end optimization here as transparent comparators with key K might
+      //return a different range than key_type (which can only return a single element range)
+   {  return this->base_t::count(x);  }
 
    #if defined(BOOST_CONTAINER_DOXYGEN_INVOKED)
 
@@ -962,7 +1000,9 @@ class set
    //! <b>Complexity</b>: Logarithmic
    template<typename K>
    inline std::pair<iterator,iterator> equal_range(const K& x)
-   {  return this->base_t::lower_bound_range(x);  }
+      //Don't use lower_bound_range optimization here as transparent comparators with key K might
+      //return a different range than key_type (which can only return a single element range)
+   {  return this->base_t::equal_range(x);  }
 
    //! <b>Requires</b>: This overload is available only if
    //! key_compare::is_transparent exists.
@@ -972,7 +1012,9 @@ class set
    //! <b>Complexity</b>: Logarithmic
    template<typename K>
    inline std::pair<const_iterator,const_iterator> equal_range(const K& x) const
-   {  return this->base_t::lower_bound_range(x);  }
+      //Don't use lower_bound_range optimization here as transparent comparators with key K might
+      //return a different range than key_type (which can only return a single element range)
+   {  return this->base_t::equal_range(x);  }
 
    #if defined(BOOST_CONTAINER_DOXYGEN_INVOKED)
 
@@ -1139,7 +1181,8 @@ namespace container {
 //!
 //! \tparam Key is the type to be inserted in the set, which is also the key_type
 //! \tparam Compare is the comparison functor used to order keys
-//! \tparam Allocator is the allocator to be used to allocate memory for this container
+//! \tparam Allocator is the allocator to be used to allocate memory for this container.
+//!   An allocator whose \c value_type is \c void is rebound to \c Key.
 //! \tparam Options is an packed option type generated using using boost::container::tree_assoc_options.
 template <class Key, class Compare = std::less<Key>, class Allocator = new_allocator<Key>, class Options = tree_assoc_defaults >
 #else
@@ -1347,6 +1390,9 @@ class multiset
 
    //! @copydoc ::boost::container::set::set(set &&, const allocator_type &)
    inline multiset(BOOST_RV_REF(multiset) x, const BOOST_CONTAINER_DOC1ST(allocator_type, typename dtl::type_identity<allocator_type>::type) &a)
+      BOOST_NOEXCEPT_IF(allocator_traits_type::is_always_equal::value &&
+                       dtl::is_nothrow_copy_constructible<Compare>::value &&
+                       dtl::is_nothrow_swappable<Compare>::value)
       : base_t(BOOST_MOVE_BASE(base_t, x), a)
    {}
 
@@ -1434,6 +1480,9 @@ class multiset
    //!   std::forward<Args>(args)... and returns the iterator pointing to the
    //!   newly inserted element.
    //!
+   //! <b>Throws</b>: If memory allocation, the construction of the element or the comparison throws.
+   //!   If an exception is thrown, there are no effects.
+   //!
    //! <b>Complexity</b>: Logarithmic.
    template <class... Args>
    inline iterator emplace(BOOST_FWD_REF(Args)... args)
@@ -1444,6 +1493,9 @@ class multiset
    //!
    //! <b>Returns</b>: An iterator pointing to the element with key equivalent
    //!   to the key of x.
+   //!
+   //! <b>Throws</b>: If memory allocation, the construction of the element or the comparison throws.
+   //!   If an exception is thrown, there are no effects.
    //!
    //! <b>Complexity</b>: Logarithmic in general, but amortized constant if t
    //!   is inserted right before p.
@@ -1471,6 +1523,9 @@ class multiset
    //! <b>Effects</b>: Inserts x and returns the iterator pointing to the
    //!   newly inserted element.
    //!
+   //! <b>Throws</b>: If memory allocation, the construction of the element or the comparison throws.
+   //!   If an exception is thrown, there are no effects.
+   //!
    //! <b>Complexity</b>: Logarithmic.
    iterator insert(const value_type &x);
 
@@ -1478,6 +1533,9 @@ class multiset
    //!
    //! <b>Returns</b>: An iterator pointing to the element with key equivalent
    //!   to the key of x.
+   //!
+   //! <b>Throws</b>: If memory allocation, the construction of the element or the comparison throws.
+   //!   If an exception is thrown, there are no effects.
    //!
    //! <b>Complexity</b>: Logarithmic in general, but amortized constant if t
    //!   is inserted right before p.
@@ -1493,6 +1551,9 @@ class multiset
    //! <b>Returns</b>: An iterator pointing to the element with key equivalent
    //!   to the key of x.
    //!
+   //! <b>Throws</b>: If memory allocation, the construction of the element or the comparison throws.
+   //!   If an exception is thrown, there are no effects.
+   //!
    //! <b>Complexity</b>: Logarithmic in general, but amortized constant if t
    //!   is inserted right before p.
    iterator insert(const_iterator p, const value_type &x);
@@ -1502,6 +1563,9 @@ class multiset
    //!
    //! <b>Returns</b>: An iterator pointing to the element with key equivalent
    //!   to the key of x.
+   //!
+   //! <b>Throws</b>: If memory allocation, the construction of the element or the comparison throws.
+   //!   If an exception is thrown, there are no effects.
    //!
    //! <b>Complexity</b>: Logarithmic in general, but amortized constant if t
    //!   is inserted right before p.
@@ -1527,10 +1591,16 @@ class multiset
 #endif
 
    //! @copydoc ::boost::container::multimap::insert(node_type&&)
+   //!
+   //! <b>Throws</b>: If the comparison throws.
+   //!   If an exception is thrown, there are no effects.
    inline iterator insert(BOOST_RV_REF_BEG_IF_CXX11 node_type BOOST_RV_REF_END_IF_CXX11 nh)
    {  return this->base_t::insert_equal_node(boost::move(nh));  }
 
    //! @copydoc ::boost::container::multimap::insert(const_iterator, node_type&&)
+   //!
+   //! <b>Throws</b>: If the comparison throws.
+   //!   If an exception is thrown, there are no effects.
    inline iterator insert(const_iterator hint, BOOST_RV_REF_BEG_IF_CXX11 node_type BOOST_RV_REF_END_IF_CXX11 nh)
    {  return this->base_t::insert_equal_node(hint, boost::move(nh));  }
 

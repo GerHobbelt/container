@@ -8,6 +8,9 @@
 //
 //////////////////////////////////////////////////////////////////////////////
 
+#ifdef _MSC_VER
+#pragma warning(disable : 4530) // C++ exception handler used, but unwind semantics are not enabled
+#endif
 #include <iostream>
 #include <set>
 #include <utility>
@@ -21,9 +24,11 @@
 #include "movable_int.hpp"
 #include "set_test.hpp"
 #include "propagate_allocator_test.hpp"
+#include "void_allocator_test.hpp"
 #include "emplace_test.hpp"
 #include "container_common_tests.hpp"
 #include "../../intrusive/test/iterator_test.hpp"
+#include "unqualified_swap_test.hpp"
 
 using namespace boost::container;
 
@@ -612,8 +617,29 @@ struct alloc_propagate_base<boost_container_flat_multiset>
 
 }}}   //boost::container::test
 
+bool test_unqualified_swap()
+{
+   namespace us = boost_container_test_unqualified_swap;
+   {  typedef boost::container::flat_set<int> cont;
+      cont a;  a.insert(1);  a.insert(2);
+      cont b;  b.insert(7);  b.insert(8);  b.insert(9);
+      if(!us::test_unqualified_swap(a, b))
+         return false;
+   }
+   {  typedef boost::container::flat_multiset<int> cont;
+      cont a;  a.insert(1);  a.insert(2);
+      cont b;  b.insert(7);  b.insert(8);  b.insert(9);
+      if(!us::test_unqualified_swap(a, b))
+         return false;
+   }
+   return true;
+}
+
 int main()
 {
+   if(!test_unqualified_swap())
+      return 1;
+
    using namespace boost::container::test;
 
    //Allocator argument container
@@ -667,6 +693,12 @@ int main()
    if (!boost::container::test::instantiate_constructors<flat_set<int>, flat_multiset<int> >())
       return 1;
 
+   if (!test::test_function_pointer_comparator
+         < flat_set<int, bool(*)(int, int)>
+         , flat_multiset<int, bool(*)(int, int)>
+         >())
+      return 1;
+
    if (!test::test_heterogeneous_lookup
          < flat_set<int, less_transparent>
          , flat_multiset<int, less_transparent>
@@ -679,6 +711,16 @@ int main()
       return 1;
 
    if(!test_heterogeneous_lookup_by_partial_key()){
+      return 1;
+   }
+
+   ////////////////////////////////////
+   //    Void value_type allocator
+   ////////////////////////////////////
+   if(!test::test_void_allocator
+         < flat_set<int, std::less<int>, new_allocator<void> >
+         , new_allocator<int> >()) {
+      std::cerr << "test_void_allocator flat_set failed" << std::endl;
       return 1;
    }
 

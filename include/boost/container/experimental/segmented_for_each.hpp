@@ -20,7 +20,7 @@
 
 #include <boost/container/detail/config_begin.hpp>
 #include <boost/container/detail/workaround.hpp>
-#include <boost/container/experimental/segmented_iterator_traits.hpp>
+#include <boost/container/experimental/detail/segmented_common_algo.hpp>
 #include <boost/container/detail/iterator.hpp>
 #include <boost/move/utility_core.hpp>
 
@@ -58,14 +58,17 @@ F segmented_for_each_dispatch
    segment_iterator sfirst = traits::segment(first);
    segment_iterator slast  = traits::segment(last);
 
-   if(sfirst == slast) {
-      return (segmented_for_each_dispatch)(traits::local(first), traits::local(last), boost::move(f), is_local_seg_t(), local_cat_t());
-   }
-   else {
-      f = (segmented_for_each_dispatch)(traits::local(first), traits::end(sfirst), boost::move(f), is_local_seg_t(), local_cat_t());
+   local_iterator lb = traits::local(first);
+
+   for(;;) {
+      const bool last_seg = sfirst == slast;
+      const local_iterator le = last_seg ? traits::local(last) : traits::end(sfirst);
+      f = (segmented_for_each_dispatch)(lb, le, boost::move(f), is_local_seg_t(), local_cat_t());
+      if(BOOST_UNLIKELY(last_seg))
+         return boost::move(f);
       for(++sfirst; sfirst != slast; ++sfirst)
          f = (segmented_for_each_dispatch)(traits::begin(sfirst), traits::end(sfirst), boost::move(f), is_local_seg_t(), local_cat_t());
-      return (segmented_for_each_dispatch)(traits::begin(sfirst), traits::local(last), boost::move(f), is_local_seg_t(), local_cat_t());
+      lb = traits::begin(sfirst);
    }
 }
 

@@ -19,9 +19,12 @@
 #include "expand_bwd_test_template.hpp"
 #include "dummy_test_allocator.hpp"
 #include "propagate_allocator_test.hpp"
+#include "void_allocator_test.hpp"
+#include <boost/container/new_allocator.hpp>
 #include "vector_test.hpp"
 #include "default_init_test.hpp"
 #include "../../intrusive/test/iterator_test.hpp"
+#include "unqualified_swap_test.hpp"
 
 using namespace boost::container;
 
@@ -107,8 +110,23 @@ struct alloc_propagate_base<boost_container_stable_vector>
 //Test the expected sizeof()
 BOOST_CONTAINER_STATIC_ASSERT_MSG(5*sizeof(void*) == sizeof(stable_vector<int>), "sizeof has an unexpected value");
 
+bool test_unqualified_swap()
+{
+   namespace us = boost_container_test_unqualified_swap;
+   {  typedef boost::container::stable_vector<int> cont;
+      cont a;  a.push_back(1);  a.push_back(2);
+      cont b;  b.push_back(7);  b.push_back(8);  b.push_back(9);
+      if(!us::test_unqualified_swap(a, b))
+         return false;
+   }
+   return true;
+}
+
 int main()
 {
+   if(!test_unqualified_swap())
+      return 1;
+
    recursive_vector_test();
    {
       //Now test move semantics
@@ -125,6 +143,16 @@ int main()
       sv.emplace_back();
       sv.resize(10);
       sv.resize(1);
+   }
+
+   ////////////////////////////////////
+   //    Void value_type allocator
+   ////////////////////////////////////
+   if(!test::test_void_allocator
+         < stable_vector<int, new_allocator<void> >
+         , new_allocator<int> >()) {
+      std::cerr << "test_void_allocator stable_vector failed" << std::endl;
+      return 1;
    }
 
    ////////////////////////////////////

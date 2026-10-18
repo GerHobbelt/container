@@ -20,7 +20,7 @@
 
 #include <boost/container/detail/config_begin.hpp>
 #include <boost/container/detail/workaround.hpp>
-#include <boost/container/experimental/segmented_iterator_traits.hpp>
+#include <boost/container/experimental/detail/segmented_common_algo.hpp>
 #include <boost/container/detail/iterator.hpp>
 #include <boost/container/experimental/segmented_fill_n.hpp>
 
@@ -55,16 +55,19 @@ void segmented_fill_range
    segment_iterator sfirst = traits::segment(first);
    segment_iterator slast  = traits::segment(last);
 
-   if(sfirst == slast) {
-      (segmented_fill_range)(traits::local(first), traits::local(last), value, is_local_seg_t(), local_cat_t());
-   }
-   else {
-      (segmented_fill_range)(traits::local(first), traits::end(sfirst), value, is_local_seg_t(), local_cat_t());
+   local_iterator lb = traits::local(first);
+
+   for(;;) {
+      const bool last_seg = sfirst == slast;
+      const local_iterator le = last_seg ? traits::local(last) : traits::end(sfirst);
+      (segmented_fill_range)(lb, le, value, is_local_seg_t(), local_cat_t());
+      if(BOOST_UNLIKELY(last_seg))
+         break;
 
       for(++sfirst; sfirst != slast; ++sfirst)
          (segmented_fill_range)(traits::begin(sfirst), traits::end(sfirst), value, is_local_seg_t(), local_cat_t());
 
-      (segmented_fill_range)(traits::begin(sfirst), traits::local(last), value, is_local_seg_t(), local_cat_t());
+      lb = traits::begin(sfirst);
    }
 }
 

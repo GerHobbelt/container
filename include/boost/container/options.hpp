@@ -313,7 +313,7 @@ BOOST_INTRUSIVE_OPTION_TYPE(growth_factor, GrowthFactor, GrowthFactor, growth_fa
 //!This option specifies the unsigned integer type that a user wants the container
 //!to use to hold size-related information inside a container (e.g. current size, current capacity).
 //!
-//!\tparam StoredSizeType An unsigned integer type. It shall be smaller than than the size
+//!\tparam StoredSizeType An unsigned integer type. It shall be smaller than the size
 //! of the size_type deduced from `allocator_traits<A>::size_type` or the same type.
 //!
 //!If the maximum capacity() to be used is limited, a user can try to use 8-bit, 16-bit 
@@ -333,6 +333,9 @@ BOOST_INTRUSIVE_OPTION_TYPE(growth_factor, GrowthFactor, GrowthFactor, growth_fa
 //!
 //!If a user tries to insert more elements than representable by \c stored_size, the container
 //!will throw a length_error.
+//!
+//!The internal capacity of \c static_vector and \c small_vector must be representable by
+//!\c stored_size, else compilation fails.
 //!
 //!If this option is not specified, `allocator_traits<A>::size_type` (usually std::size_t) will
 //!be used to store size-related information inside the container.
@@ -753,8 +756,13 @@ using segtor_options_t = typename boost::container::segtor_options<Options...>::
 //! A value zero represents the default value
 //! (typically 10 chars in 32-bit systems and 22 chars in 64-bit systems).
 //!
+//! The internal buffer holds the inline characters plus the null terminator, and it can be
+//! bigger than requested to use the padding bytes. If the \c stored_size option is also
+//! specified, the internal buffer must be representable by \c stored_size
+//! For example, \c stored_size<unsigned char> supports up to 126 inline characters.
+//!
 //!\tparam InlineChars An unsigned integer value. Values greater than 127 are not supported
-//!                    duet to the internal data structure design.
+//!                    due to the internal data structure design.
 BOOST_INTRUSIVE_OPTION_CONSTANT(inline_chars, std::size_t, InlineChars, inline_chars)
 
 //! Helper metafunction to combine options into a single type to be used

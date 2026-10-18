@@ -9,6 +9,9 @@
 //////////////////////////////////////////////////////////////////////////////
 #include <memory>
 #include <vector>
+#ifdef _MSC_VER
+#pragma warning(disable : 4530) // C++ exception handler used, but unwind semantics are not enabled
+#endif
 #include <iostream>
 #include <list>
 
@@ -27,11 +30,13 @@
 #include <string>
 #include "emplace_test.hpp"
 #include "propagate_allocator_test.hpp"
+#include "void_allocator_test.hpp"
 #include "vector_test.hpp"
 #include "default_init_test.hpp"
 #include "../../intrusive/test/iterator_test.hpp"
 
-#include <boost/core/lightweight_test.hpp>
+#include "lightweight_test.hpp"
+#include "unqualified_swap_test.hpp"
 
 using namespace boost::container;
 
@@ -412,8 +417,23 @@ struct alloc_propagate_base<boost_container_segtor>
 //Test segtor has the expected size --> 3 words
 BOOST_CONTAINER_STATIC_ASSERT_MSG(3*sizeof(void*) == sizeof(segtor<int>), "sizeof(segtor<int> should be 3 words");
 
+bool test_unqualified_swap()
+{
+   namespace us = boost_container_test_unqualified_swap;
+   {  typedef boost::container::segtor<int> cont;
+      cont a;  a.push_back(1);  a.push_back(2);
+      cont b;  b.push_back(7);  b.push_back(8);  b.push_back(9);
+      if(!us::test_unqualified_swap(a, b))
+         return false;
+   }
+   return true;
+}
+
 int main ()
 {
+   if(!test_unqualified_swap())
+      return 1;
+
    if(!do_recursive_segtor_test())
       return 1;
 
@@ -443,6 +463,16 @@ int main ()
       d.emplace_back(1);
       d.resize(10);
       d.resize(1);
+   }
+
+   ////////////////////////////////////
+   //    Void value_type allocator
+   ////////////////////////////////////
+   if(!test::test_void_allocator
+         < segtor<int, new_allocator<void> >
+         , new_allocator<int> >()) {
+      std::cerr << "test_void_allocator segtor failed" << std::endl;
+      return 1;
    }
 
    ////////////////////////////////////

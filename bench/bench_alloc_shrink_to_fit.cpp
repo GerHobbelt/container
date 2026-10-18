@@ -10,6 +10,7 @@
 
 #ifdef _MSC_VER
 #pragma warning (disable : 4512)
+#pragma warning (disable : 4530) // C++ exception handler used, but unwind semantics are not enabled
 #endif
 
 #include <boost/container/allocator.hpp>
@@ -115,7 +116,7 @@ void vector_test_template(std::size_t num_iterations, std::size_t num_elements, 
                   << float(nseconds)/float(num_iterations*num_elements)
                   << std::endl << std::endl;
    }
-   bc::dlmalloc_trim(0);
+   bc::dlmalloc_heap().trim(0);
 }
 
 int main(int argc, const char *argv[])

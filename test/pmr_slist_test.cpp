@@ -8,19 +8,37 @@
 //
 //////////////////////////////////////////////////////////////////////////////
 
-#include <boost/container/slist.hpp>
-
-struct empty
-{
-   friend bool operator == (const empty &, const empty &){ return true; }
-   friend bool operator <  (const empty &, const empty &){ return true; }
-};
-
-template class ::boost::container::slist<empty>;
+#include <boost/container/pmr/slist.hpp>
+#include <boost/container/detail/type_traits.hpp>
+#include "void_allocator_test.hpp"
 
 int main()
 {
-   ::boost::container::slist<empty> dummy;
-   (void)dummy;
+   using namespace boost::container;
+   using boost::container::dtl::is_same;
+
+   typedef slist<int, pmr::polymorphic_allocator<int> > intcontainer_t;
+   BOOST_CONTAINER_STATIC_ASSERT(( is_same<intcontainer_t, pmr::slist_of<int>::type >::value ));
+   #if !defined(BOOST_NO_CXX11_TEMPLATE_ALIASES)
+      BOOST_CONTAINER_STATIC_ASSERT(( is_same<intcontainer_t, pmr::slist<int> >::value ));
+   #endif
+   //polymorphic_allocator can compare unequal so a moved-from container can hold memory
+   BOOST_CONTAINER_STATIC_ASSERT(( !boost::has_trivial_destructor_after_move<intcontainer_t>::value ));
+   intcontainer_t cont(pmr::get_default_resource());
+   typedef intcontainer_t::value_type value_type;
+   cont.push_front(value_type());
+
+   ////////////////////////////////////
+   //    Void value_type allocator
+   ////////////////////////////////////
+   {
+      typedef slist<int, pmr::polymorphic_allocator<void> > voidalloc_cont_t;
+      if(!test::test_void_allocator
+            < voidalloc_cont_t
+            , pmr::polymorphic_allocator<int> >()) {
+         return 1;
+      }
+   }
+
    return 0;
 }

@@ -20,9 +20,10 @@
 
 #include <boost/container/detail/config_begin.hpp>
 #include <boost/container/detail/workaround.hpp>
-#include <boost/container/experimental/segmented_iterator_traits.hpp>
+#include <boost/container/experimental/detail/segmented_common_algo.hpp>
 #include <boost/container/detail/iterator.hpp>
 #include <boost/move/utility_core.hpp>
+#include <cstddef>
 
 namespace boost {
 namespace container {
@@ -50,18 +51,84 @@ BOOST_CONTAINER_FORCEINLINE typename algo_enable_if_c<!DstTag::value, segduo<Src
 segmented_remove_copy_if_dst_bounded
    (SrcIter first, Sent last, DstIter dst_first, DstSent dst_last, Pred pred, DstTag, SrcCat)
 {
-   BOOST_CONTAINER_SEGMENTED_UNROLL(4)
-   for(; first != last; ++first) {
-      if(!pred(*first)) {
-         if(dst_first == dst_last)
-            goto out_path;
-         transfer_op<Move>::apply(*dst_first, *first);
-         ++dst_first;
+   //[alg.remove] mandates exactly last - first applications of pred.  Testing an
+   //element, discovering the destination segment is full and returning makes the
+   //enclosing destination walker call this leaf again on the same element, which
+   //re-applies pred.  Checking the destination once on entry and again after each
+   //write removes that: when the destination fills, `first` has already moved
+   //past the element that was written, so the next call resumes on an untested
+   //element.  With an unreachable_sentinel_t destination both checks fold away,
+   //so the flat path is unchanged.
+   if(BOOST_LIKELY(dst_first != dst_last)) {
+      BOOST_CONTAINER_SEGMENTED_UNROLL(4)
+      while(first != last) {
+         if(!pred(*first)) {
+            transfer_op<Move>::apply(*dst_first, *first);
+            ++dst_first;
+            ++first;
+            if(BOOST_UNLIKELY(dst_first == dst_last))
+               break;
+         }
+         else
+            ++first;
       }
    }
-   out_path:
    return segduo<SrcIter, DstIter>(first, dst_first);
 }
+
+#if BOOST_CONTAINER_SEGMENTED_ENABLE_RA_SPECIALIZATIONS
+template <bool Move, class RASrcIter, class RADstIter, class Pred>
+BOOST_CONTAINER_FORCEINLINE typename iterator_enable_if_tag
+   <RADstIter, std::random_access_iterator_tag, segduo<RASrcIter, RADstIter> >::type
+segmented_remove_copy_if_dst_bounded
+   (RASrcIter first, RASrcIter last, RADstIter dst_first, RADstIter dst_last, Pred pred,
+    const non_segmented_iterator_tag &, const std::random_access_iterator_tag &)
+{
+   //[alg.remove] same dest-after-write contract as the generic leaf.
+   typedef typename iterator_traits<RASrcIter>::difference_type difference_type;
+   typedef segduo<RASrcIter, RADstIter> result_t;
+   const difference_type block_size = 16;
+   difference_type n = last - first;
+
+   //Avoid destination check if both input and output ranges are big enough
+   while(n >= block_size &&
+         static_cast<difference_type>(dst_last - dst_first) >= block_size) {
+      n -= block_size;
+      BOOST_CONTAINER_SEGMENTED_AUTO_UNROLL
+      for(difference_type chunk = block_size; chunk; ) {
+         --chunk;
+         if(!pred(*first)) {
+            transfer_op<Move>::apply(*dst_first, *first);
+            ++dst_first;
+         }
+         ++first;
+      }
+   }
+
+   //Loop 1 may exhaust the destination exactly; do not write past the end.
+   if(BOOST_UNLIKELY(dst_first == dst_last))
+      goto out_ret;
+
+   //Remaining elements
+   BOOST_CONTAINER_SEGMENTED_UNROLL(4)
+   while(n) {
+      if(!pred(*first)) {
+         transfer_op<Move>::apply(*dst_first, *first);
+         ++dst_first;
+         ++first;
+         --n;
+         if(BOOST_UNLIKELY(dst_first == dst_last))
+            break;
+      }
+      else {
+         ++first;
+         --n;
+      }
+   }
+   out_ret:
+   return result_t(first, dst_first);
+}
+#endif   // BOOST_CONTAINER_SEGMENTED_ENABLE_RA_SPECIALIZATIONS
 
 template <bool Move, class SrcIter, class Sent, class SegDstIter, class Pred, class SrcCat>
 segduo<SrcIter, SegDstIter> segmented_remove_copy_if_dst_bounded
@@ -76,29 +143,28 @@ segduo<SrcIter, SegDstIter> segmented_remove_copy_if_dst_bounded
    dst_segment_iterator       sfirst = dst_traits::segment(dst_first);
    const dst_segment_iterator slast  = dst_traits::segment(dst_last);
 
-   if(sfirst == slast) {
-      segduo<SrcIter, dst_local_iterator> r = (segmented_remove_copy_if_dst_bounded<Move>)
-         (first, last, dst_traits::local(dst_first), dst_traits::local(dst_last), pred, dst_is_local_seg_t(), SrcCat());
-      return segduo<SrcIter, SegDstIter>(r.first, dst_traits::compose(sfirst, r.second));
-   }
-   else {
-      segduo<SrcIter, dst_local_iterator> r = (segmented_remove_copy_if_dst_bounded<Move>)
-         (first, last, dst_traits::local(dst_first), dst_traits::end(sfirst), pred, dst_is_local_seg_t(), SrcCat());
-      first = r.first;
-      if(first == last)
-         return segduo<SrcIter, SegDstIter>(first, dst_traits::compose(sfirst, r.second));
+   dst_local_iterator db = dst_traits::local(dst_first);
 
-      for(++sfirst; sfirst != slast; ++sfirst) {
-         r = (segmented_remove_copy_if_dst_bounded<Move>)
-            (first, last, dst_traits::begin(sfirst), dst_traits::end(sfirst), pred, dst_is_local_seg_t(), SrcCat());
+   for(;;) {
+      const bool last_seg = sfirst == slast;
+      const dst_local_iterator de = last_seg ? dst_traits::local(dst_last) : dst_traits::end(sfirst);
+      {
+         const segduo<SrcIter, dst_local_iterator> r = (segmented_remove_copy_if_dst_bounded<Move>)
+            (first, last, db, de, pred, dst_is_local_seg_t(), SrcCat());
          first = r.first;
-         if(first == last)
+         if(last_seg || BOOST_UNLIKELY(first == last))
             return segduo<SrcIter, SegDstIter>(first, dst_traits::compose(sfirst, r.second));
       }
 
-      r = (segmented_remove_copy_if_dst_bounded<Move>)
-         (first, last, dst_traits::begin(slast), dst_traits::local(dst_last), pred, dst_is_local_seg_t(), SrcCat());
-      return segduo<SrcIter, SegDstIter>(r.first, dst_traits::compose(sfirst, r.second));
+      for(++sfirst; sfirst != slast; ++sfirst) {
+         const segduo<SrcIter, dst_local_iterator> r = (segmented_remove_copy_if_dst_bounded<Move>)
+            (first, last, dst_traits::begin(sfirst), dst_traits::end(sfirst), pred, dst_is_local_seg_t(), SrcCat());
+         first = r.first;
+         if(BOOST_UNLIKELY(first == last))
+            return segduo<SrcIter, SegDstIter>(first, dst_traits::compose(sfirst, r.second));
+      }
+
+      db = dst_traits::begin(sfirst);
    }
 }
 
@@ -127,7 +193,7 @@ SegDstIter segmented_remove_copy_if_dst_dispatch
    typedef typename dst_traits::segment_iterator  dst_segment_iterator;
    typedef typename segmented_iterator_traits<dst_local_iterator>::is_segmented_iterator dst_is_local_seg_t;
 
-   if(first == last)
+   if(BOOST_UNLIKELY(first == last))
       return result;
 
    dst_segment_iterator dst_seg   = dst_traits::segment(result);
@@ -138,7 +204,7 @@ SegDstIter segmented_remove_copy_if_dst_dispatch
       const segduo<SrcIter, dst_local_iterator> r = (segmented_remove_copy_if_dst_bounded<Move>)
          (first, last, dst_local, dst_end, pred, dst_is_local_seg_t(), Cat());
       first = r.first;
-      if(first != last) {
+      if(BOOST_LIKELY(first != last)) {
          ++dst_seg;
          dst_local = dst_traits::begin(dst_seg);
       }
@@ -161,14 +227,9 @@ typename algo_enable_if_c<
 segmented_remove_copy_if_dispatch
    (SrcIter first, Sent last, OutIter result, Pred pred, Tag, Cat)
 {
-#if !defined(BOOST_CONTAINER_DISABLE_MULTI_SEGMENTED_ALGO)
    typedef segmented_iterator_traits<OutIter> dst_traits;
    return (segmented_remove_copy_if_dst_dispatch<Move>)
       (first, last, result, pred, typename dst_traits::is_segmented_iterator(), Cat());
-#else
-   return (segmented_remove_copy_if_dst_dispatch<Move>)
-      (first, last, result, pred, non_segmented_iterator_tag(), Cat());
-#endif
 }
 
 template <bool Move, class SegIter, class OutIter, class Pred, class Cat>
@@ -184,20 +245,21 @@ OutIter segmented_remove_copy_if_dispatch
    src_segment_iterator sfirst = src_traits::segment(first);
    const src_segment_iterator slast  = src_traits::segment(last);
 
-   if(sfirst == slast) {
-      return (segmented_remove_copy_if_dispatch<Move>)
-         (src_traits::local(first), src_traits::local(last), result, pred, src_is_local_seg_t(), src_local_cat_t());
-   }
-   else {
+   src_local_iterator lb = src_traits::local(first);
+
+   for(;;) {
+      const bool last_seg = sfirst == slast;
+      const src_local_iterator le = last_seg ? src_traits::local(last) : src_traits::end(sfirst);
       result = (segmented_remove_copy_if_dispatch<Move>)
-         (src_traits::local(first), src_traits::end(sfirst), result, pred, src_is_local_seg_t(), src_local_cat_t());
+         (lb, le, result, pred, src_is_local_seg_t(), src_local_cat_t());
+      if(BOOST_UNLIKELY(last_seg))
+         return result;
 
       for(++sfirst; sfirst != slast; ++sfirst)
          result = (segmented_remove_copy_if_dispatch<Move>)
             (src_traits::begin(sfirst), src_traits::end(sfirst), result, pred, src_is_local_seg_t(), src_local_cat_t());
 
-      return (segmented_remove_copy_if_dispatch<Move>)
-         (src_traits::begin(slast), src_traits::local(last), result, pred, src_is_local_seg_t(), src_local_cat_t());
+      lb = src_traits::begin(sfirst);
    }
 }
 

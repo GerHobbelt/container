@@ -69,19 +69,12 @@ In short, what does [*Boost.Container] offer?
 
 [section:introduction_building_container Building Boost.Container]
 
-For most functionalities, there is no need to compile [*Boost.Container], since it's a header-only library,
-just include your Boost header directory in your compiler include path *except if you use*:
+There is no need to compile [*Boost.Container]: it is a header-only library (including
+[link container.extended_allocators Extended Allocators] and
+[link container.cpp_conformance.polymorphic_memory_resources Polymorphic Memory Resources],
+which required a separately compiled library before Boost 1.93). Just include your Boost header
+directory in your compiler include path.
 
-*  [link container.extended_allocators Extended Allocators]
-*  Some [link container.cpp_conformance.polymorphic_memory_resources Polymorphic Memory Resources] classes.
-   
-Those exceptions are are implemented as a separately compiled library, so in those cases you must install binaries
-in a location that can be found by your linker.
-If you followed the [@http://www.boost.org/doc/libs/release/more/getting_started/index.html Boost Getting Started]
-instructions, that's already been done for you.
-
-For the CMake build system, the project (`CMakeLists.txt`) contains the BOOST_CONTAINER_HEADER_ONLY option that can be set
-to ON to build the library as header-only or OFF to build it as a separately compiled library.
 
 [endsect]
 
@@ -458,6 +451,13 @@ C++03 onwards):
   underlying vector-like sequence (e.g. [classref boost::container::small_vector small_vector] or
   [classref boost::container::static_vector static_vector]) through a template parameter and offer additional
   ordered-range insertion overloads.
+
+* [*Operations not available in the standard flat containers]:
+  * `merge()`, from another flat container of the same kind or of the other uniqueness kind (for example
+    `flat_map::merge(flat_multimap&)`), with an equal allocator.
+  * `reserve()`, `capacity()` and `shrink_to_fit()`, to control the memory of the underlying sequence.
+  * `nth()` and `index_of()`, to convert between iterators and positions.
+  * `get_allocator()` and `get_stored_allocator()`.
 
 The following example shows the most common operations, the single-sequence storage and the
 `extract_sequence`/`adopt_sequence` idiom:
@@ -1994,6 +1994,20 @@ shortly after new elements are added to the container.
 `container::resize(size_type n, default_init_t)`, where new elements are constructed
 using [@http://en.cppreference.com/w/cpp/language/default_initialization default initialization].
 
+[note In C++26, reading an uninitialized automatic variable is erroneous behavior
+([@https://wg21.link/P2795 P2795]), and some compilers (e.g. GCC 16 with `-std=c++26`)
+zero-initialize the whole object before the constructor runs. For containers with
+in-place storage (`static_vector`, `small_vector`) declared as local variables, this
+can remove the benefit of `default_init`. The container cannot avoid this, because
+`[[indeterminate]]` cannot be applied to data members. Mark the variable `[[indeterminate]]`:
+
+``
+boost::container::small_vector<float, 100> buf [[indeterminate]] (100, boost::container::default_init);
+``
+
+or use a compiler option such as GCC's `-ftrivial-auto-var-init=uninitialized`.
+Containers that allocate their elements dynamically are not affected.]
+
 [endsect]
 
 [section:ordered_range_insertion Ordered range insertion for associative containers (['ordered_unique_range], ['ordered_range]) ]
@@ -2047,6 +2061,65 @@ then the operation is constant time, even with an O(1) size.
 
 [*Boost.Container] implements this overload for `list` and a modified version of it for `slist`
 (as `slist::size()` is also `O(1)`).
+
+[endsect]
+
+[section:void_allocator_argument The ['void] allocator argument]
+
+[*Boost.Container] treats `void` specially in the allocator template argument in two
+related ways, so that the container's `allocator_type` always has the correct
+`value_type`. This applies to sequence and associative containers alike
+(including [classref boost::container::map map], where the rebound
+`value_type` is `std::pair<const Key, T>`).
+
+[section:void_allocator_type Allocator template argument is ['void]]
+
+When the allocator argument is the type `void`, the library selects its
+default allocator for the container's `value_type`.
+
+[endsect]
+
+[section:void_value_type_allocator Allocator with ['void] value type]
+
+Standard containers typically require the allocator's `value_type` to match the
+container's element type, which forces repeating that type in every declaration:
+
+``
+boost::container::vector<MyType, MyAlloc<MyType> > v;
+boost::container::map   <Key, T, Compare, MyAlloc< std::pair<const Key, T> > > m;
+``
+
+[*Boost.Container] also accepts an allocator whose `value_type` is `void`,
+so that those types can be used as type-erased allocators. The container's
+`allocator_type` is the rebound allocator.
+
+[import ../example/doc_void_allocator.cpp]
+[doc_void_allocator]
+
+[*Benefits]. Accepting void-valued allocators has several advantages:
+
+* [*The element type is written once]. In `vector<MyType, MyAlloc<MyType> >` the
+  element type appears twice and both occurrences must be kept in sync.
+
+* [*It avoids a whole class of `value_type` mismatches in associative containers],
+  where the required allocator `value_type` is not the obvious one and is not even
+  the same across container families:
+  [classref boost::container::map map] requires
+  `MyAlloc< std::pair<const Key, T> >` (note the `const`) whereas
+  [classref boost::container::flat_map flat_map] requires
+  `MyAlloc< std::pair<Key, T> >` (no `const`). Writing `MyAlloc<void>` is correct
+  for both.
+
+* [*It removes rebinding boilerplate from generic code]. Code that is parameterized
+  on an allocator and instantiates containers of several element types no longer
+  needs to explicitly rebind, the allocator can be forwarded as a single template argument.
+
+Rebinding happens entirely at compile time, so there is no runtime cost.
+Since the container's `allocator_type` is the rebound allocator, so
+`AllocatorAwareContainer` semantics (propagation traits, `get_allocator()`,
+allocator-extended constructors) are unchanged.
+
+[endsect]
 
 [endsect]
 
@@ -2302,8 +2375,8 @@ classes.
 allocator and offers an C API to implement memory expansion and burst allocations. DLmalloc is known to be very size
 and speed efficient, and this allocator is used as the basis of many malloc implementations, including multithreaded
 allocators built above DLmalloc (See [@http://www.malloc.de/en/ ptmalloc2, ptmalloc3] or
-[@http://www.nedprod.com/programs/portable/nedmalloc/ nedmalloc]). This low-level allocator is implemented as
-a separately compiled library and the following extended allocators depend on the library:
+[@http://www.nedprod.com/programs/portable/nedmalloc/ nedmalloc]).
+The following extended allocators depend on the library:
 
 *  [classref boost::container::allocator allocator]: This extended allocator offers expansion, shrink-in place
    and burst allocation capabilities implemented as a thin wrapper around the modified DLMalloc.
@@ -2472,11 +2545,8 @@ Most utilities from the Fundamentals TS were merged into C++17, but
 [*Boost.Container] implements nearly all classes of the proposal under
 the namespace `boost::container::pmr`. There are two groups,
 
-*  Header only utilities (these don't require the separately compiled library): 
    *	[classref boost::container::pmr::memory_resource memory_resource].
    *	[classref boost::container::pmr::resource_adaptor resource_adaptor].
-
-*  Utilities that require the the separately compiled library: 
    *	[classref boost::container::pmr::polymorphic_allocator polymorphic_allocator].
    *	[classref boost::container::pmr::monotonic_buffer_resource monotonic_buffer_resource].
    *	[classref boost::container::pmr::unsynchronized_pool_resource unsynchronized_pool_resource].
@@ -2595,12 +2665,15 @@ while offering only basic safety guarantees. It trades off exception guarantees 
 
 [endsect]
 
-[section:container_const_reference_parameters Parameter taken by const reference that can be changed]
+[section:container_self_reference_parameters Arguments that refer to elements of the same container]
 
-Several container operations use a parameter taken by const reference that can be changed during execution of the function.
+Several container operations take an argument that the operation itself can change or destroy,
+because the argument refers to an element of the container.
 [@http://www.open-std.org/jtc1/sc22/wg21/docs/lwg-closed.html#526 LWG Issue 526
    (['Is it undefined if a function in the standard changes in parameters?])]
-discusses them:
+and [@https://cplusplus.github.io/LWG/issue2164 LWG Issue 2164]
+(['What are the semantics of `vector.emplace(vector.begin(), vector.back())`?])
+discuss them:
 
 [c++]
 
@@ -2612,15 +2685,38 @@ discusses them:
    l.remove(*l.begin())
    //The operation could delete the first element, and then continue trying to access it.
 
-The adopted resolution, NAD (Not A Defect), implies that previous operations must be well-defined. This requires code
-to detect a reference to an inserted element and an additional copy in that case, impacting performance even when
-references to already inserted objects are not used. Note that equivalent functions taking rvalue references or
-iterator ranges require elements not already inserted in the container.
+The resolution of these issues requires that such operations are well-defined. For the standard containers,
+a precondition forbids an argument that refers to an element only in some functions: `assign(n, t)`
+("`t` is not a reference into `a`") and the functions that take an iterator range or a range
+("the iterators are not iterators into `a`"). All other functions must work. This requires code
+that detects a reference to an element and makes an additional copy or move in that case, which
+decreases performance also when no argument refers to an element.
 
-[*Boost.Container] prioritizes performance and has not implemented the NAD resolution:
-in functions that might modify the argument, the library requires references to elements not stored
-in the container. Using references to inserted elements yields to undefined behaviour (although in debug mode, this
-precondition violation could be notified via BOOST_ASSERT).
+[*Boost.Container] prioritizes performance and does not implement this resolution. As a general
+precondition for all containers, unless the documentation of a function says otherwise:
+
+* An argument of a member function that modifies the container must not be an element of the container,
+  and must not refer to an element (directly or indirectly) or to memory that an element owns.
+  This applies to arguments taken by const reference (`insert(p, x)`, `insert(p, n, x)`, `push_back(x)`,
+  `push_front(x)`, `resize(n, x)`, `assign(n, x)`, `remove(x)`...), to arguments taken by rvalue reference,
+  and to the arguments of the emplace functions (`emplace`, `emplace_back`, `emplace_front`, `emplace_hint`,
+  `try_emplace`, `insert_or_assign`...).
+* An iterator range or range argument (`insert(p, first, last)`, `assign(first, last)`, the range
+  constructors...) must not contain iterators into the container.
+
+This precondition does not apply to `merge`: as in the standard, merging a container with itself
+(`c.merge(c)`) is valid and has no effect.
+
+If a program does not respect this precondition, the behavior is undefined. For example, the inserted
+value can be a moved-from object or the value of a different element.
+
+To insert a copy of an element, first copy it to a local object, then insert that object:
+
+[c++]
+
+   //Given boost::container::vector<std::string> v
+   std::string tmp(v[2]);
+   v.insert(v.begin(), boost::move(tmp));
 
 [endsect]
 
@@ -2831,6 +2927,47 @@ collect them containers and build [*Boost.Container], a library targeted to a wi
 [endsect]
 
 [section:release_notes Release Notes]
+
+[section:release_notes_boost_1_93_00 Boost 1.93 Release]
+
+* Containers now accept allocators whose \c value_type is \c void; such allocators
+  are rebound to the container's element type via \c real_allocator.
+
+* Added overaligned support for [classref boost::container::pmr::monotonic_buffer_resource monotonic_buffer_resource].
+
+* The library is again fully header-only. Global variables and functions that were
+  moved to the separately compiled library now live in a intermodule utility that
+  can share them across DLLs.
+
+* Dlmalloc's heap now always uses an improved, spin lock and small allocation layout,
+  with faster allocation for small requests (240-512 bytes are ~15-25% faster on 64-bit).
+
+* Counted basic_string constructors and member functions accept a null pointer when the count
+  is zero (LWG 2235 and the C++20 “valid range” wording).
+
+* Iterators, stateless allocators, [classref boost::container::pmr::polymorphic_allocator polymorphic_allocator],
+  [classref boost::container::scoped_allocator_adaptor scoped_allocator_adaptor] and internal utilities
+  are trivially copyable when their members are. This allows some compilers to pass and return them in registers.
+
+* Allocator-extended move constructors are now `noexcept` when `allocator_traits<Allocator>::is_always_equal`
+  is true (as an extension to the standard[classref boost::container::vector vector],
+  [classref boost::container::devector devector], [classref boost::container::deque deque],
+  [classref boost::container::segtor segtor], [classref boost::container::list list],
+  [classref boost::container::slist slist], [classref boost::container::stable_vector stable_vector],
+  [classref boost::container::basic_string basic_string], [classref boost::container::hub hub].
+  [classref boost::container::map map],
+  [classref boost::container::multimap multimap], [classref boost::container::set set] and
+  [classref boost::container::multiset multiset] also need a comparator with a non-throwing copy constructor and swap.
+
+* Fixed bugs/issues/enhancements:
+   * [@https://github.com/boostorg/container/issues/335 GitHub #335: ['"Error on instantiating an incomplete type"]].
+   * [@https://github.com/boostorg/container/pull/339 GitHub #339: ['"optimized range insertion for boost::container::hub"]].
+   * [@https://github.com/boostorg/container/issues/342 GitHub #342: ['"Using unqualified swap() on two small_vectors calls an incorrect swap function"]].
+   * [@https://github.com/boostorg/container/issues/333 GitHub #333: ['"Default_init results in a memset with GCC16"]] (documented, see the note in [link container.extended_functionality.default_initialialization Default initialization]).
+   * [@https://github.com/boostorg/container/issues/344 GitHub #344: ['"Build break on Windows ARM64EC near the definition of the BOOST_CONTAINER_PREFETCH macro"]].
+   * [@https://github.com/boostorg/container/issues/346 GitHub #346: ['"Regression: Invalid assertion in string assign (and probably other functions)"]].
+
+[endsect]
 
 [section:release_notes_boost_1_92_00 Boost 1.92 Release]
 

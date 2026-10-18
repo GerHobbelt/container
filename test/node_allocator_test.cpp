@@ -13,6 +13,7 @@
 #include "movable_int.hpp"
 #include "list_test.hpp"
 #include "vector_test.hpp"
+#include "extended_allocator_test.hpp"
 
 using namespace boost::container;
 
@@ -66,6 +67,16 @@ int main ()
    if(test::vector_test<MyVectorV1>())
       return 1;
    if(test::vector_test<MyOVectorV1>())
+      return 1;
+
+   //The Version 2 chain interface: containers reach it only for some
+   //sizes, so exercise it directly.
+   if(test::extended_pool_allocator_test<node_allocator_t>("node_allocator<int>"))
+      return 1;
+   if(test::extended_pool_allocator_test< node_allocator<double> >("node_allocator<double>"))
+      return 1;
+   //Over-aligned type (bigger than the dlmalloc alignment)
+   if(test::extended_pool_allocator_test<onode_allocator_t>("node_allocator<overaligned>"))
       return 1;
 
    return 0;

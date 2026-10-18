@@ -100,6 +100,38 @@ class allocator_traits_dummy
    void deallocate(T *, std::size_t){}
 };
 
+//Destroys *p with its destructor at the end of the scope, unless it is released.
+//If T is trivially destructible, it does nothing, so no exception handling code is generated.
+template<class T, bool = is_trivially_destructible<T>::value>
+class scoped_object_destructor
+{
+   T *mp;
+   scoped_object_destructor(const scoped_object_destructor &);
+   scoped_object_destructor &operator=(const scoped_object_destructor &);
+
+   public:
+   BOOST_CONTAINER_FORCEINLINE explicit scoped_object_destructor(T *p)
+      : mp(p)
+   {}
+
+   BOOST_CONTAINER_FORCEINLINE ~scoped_object_destructor()
+   {  if(mp) mp->~T();  }
+
+   BOOST_CONTAINER_FORCEINLINE void release()
+   {  mp = 0;  }
+};
+
+template<class T>
+class scoped_object_destructor<T, true>
+{
+   public:
+   BOOST_CONTAINER_FORCEINLINE explicit scoped_object_destructor(T *)
+   {}
+
+   BOOST_CONTAINER_FORCEINLINE void release()
+   {}
+};
+
 #if !defined(BOOST_NO_CXX11_VARIADIC_TEMPLATES)
 
 template<class T, class ...Args>
@@ -132,15 +164,9 @@ typename dtl::enable_if<dtl::is_pair<T>, void >::type
    construct_type(T* p)
 {
    dtl::construct_type(dtl::addressof(p->first));
-   BOOST_CONTAINER_TRY{
-      dtl::construct_type(dtl::addressof(p->second));
-   }
-   BOOST_CONTAINER_CATCH(...) {
-      typedef typename T::first_type first_type;
-      dtl::addressof(p->first)->~first_type();
-      BOOST_CONTAINER_RETHROW
-   }
-   BOOST_CONTAINER_CATCH_END
+   dtl::scoped_object_destructor<typename T::first_type> guard_first(dtl::addressof(p->first));
+   dtl::construct_type(dtl::addressof(p->second));
+   guard_first.release();
 }
 
 template<class T, class U>
@@ -151,15 +177,9 @@ typename dtl::enable_if_c
 construct_type(T* p, U &u)
 {
    dtl::construct_type(dtl::addressof(p->first), u.first);
-   BOOST_CONTAINER_TRY{
-      dtl::construct_type(dtl::addressof(p->second), u.second);
-   }
-   BOOST_CONTAINER_CATCH(...) {
-      typedef typename T::first_type first_type;
-      dtl::addressof(p->first)->~first_type();
-      BOOST_CONTAINER_RETHROW
-   }
-   BOOST_CONTAINER_CATCH_END
+   dtl::scoped_object_destructor<typename T::first_type> guard_first(dtl::addressof(p->first));
+   dtl::construct_type(dtl::addressof(p->second), u.second);
+   guard_first.release();
 }
 
 template<class T, class U>
@@ -171,15 +191,9 @@ typename dtl::enable_if_c
 construct_type(T* p, BOOST_RV_REF(U) u)
 {
    dtl::construct_type(dtl::addressof(p->first), ::boost::move(u.first));
-   BOOST_CONTAINER_TRY{
-      dtl::construct_type(dtl::addressof(p->second), ::boost::move(u.second));
-   }
-   BOOST_CONTAINER_CATCH(...) {
-      typedef typename T::first_type first_type;
-      dtl::addressof(p->first)->~first_type();
-      BOOST_CONTAINER_RETHROW
-   }
-   BOOST_CONTAINER_CATCH_END
+   dtl::scoped_object_destructor<typename T::first_type> guard_first(dtl::addressof(p->first));
+   dtl::construct_type(dtl::addressof(p->second), ::boost::move(u.second));
+   guard_first.release();
 }
 
 template<class T, class U, class V>
@@ -188,15 +202,9 @@ typename dtl::enable_if<dtl::is_pair<T>, void >::type
 construct_type(T* p, BOOST_FWD_REF(U) x, BOOST_FWD_REF(V) y)
 {
    dtl::construct_type(dtl::addressof(p->first), ::boost::forward<U>(x));
-   BOOST_CONTAINER_TRY{
-      dtl::construct_type(dtl::addressof(p->second), ::boost::forward<V>(y));
-   }
-   BOOST_CONTAINER_CATCH(...) {
-      typedef typename T::first_type first_type;
-      dtl::addressof(p->first)->~first_type();
-      BOOST_CONTAINER_RETHROW
-   }
-   BOOST_CONTAINER_CATCH_END
+   dtl::scoped_object_destructor<typename T::first_type> guard_first(dtl::addressof(p->first));
+   dtl::construct_type(dtl::addressof(p->second), ::boost::forward<V>(y));
+   guard_first.release();
 }
 
 }  //namespace dtl
@@ -266,6 +274,67 @@ BOOST_INTRUSIVE_INSTANTIATE_DEFAULT_TYPE_TMPLT(is_partially_propagable)
 
 }  //namespace dtl {
 
+template <typename Allocator>
+struct allocator_traits;
+
+namespace dtl {
+
+//True if allocator_traits<Allocator>::destroy(a, p) only calls the destructor of a T object: the
+//allocator has no destroy member, or it is std::allocator. Allocators whose destroy member only
+//calls the destructor (e.g. scoped_allocator_adaptor) specialize it.
+template<class Allocator, class T>
+struct allocator_destroy_is_destructor
+{
+   BOOST_STATIC_CONSTEXPR bool value =
+      !is_not_std_allocator<Allocator>::value ||
+      !has_member_function_callable_with_destroy<Allocator, T* const>::value;
+};
+
+//True if allocator_traits<Allocator>::destroy(a, p) does nothing for a T object: T is trivially
+//destructible and destroy only calls the destructor.
+template<class Allocator, class T>
+struct is_trivially_alloc_destructible
+{
+   BOOST_STATIC_CONSTEXPR bool value = is_trivially_destructible<T>::value &&
+      allocator_destroy_is_destructor<Allocator, T>::value;
+};
+
+//Destroys *p with allocator_traits<Allocator>::destroy at the end of the scope, unless it is released.
+//If is_trivially_alloc_destructible, it does nothing, so no exception handling code is generated.
+template< class Allocator, class T
+        , bool = is_trivially_alloc_destructible<Allocator, T>::value >
+class scoped_alloc_object_destructor
+{
+   Allocator &ma;
+   T *mp;
+   scoped_alloc_object_destructor(const scoped_alloc_object_destructor &);
+   scoped_alloc_object_destructor &operator=(const scoped_alloc_object_destructor &);
+
+   public:
+   BOOST_CONTAINER_FORCEINLINE scoped_alloc_object_destructor(Allocator &a, T *p)
+      : ma(a), mp(p)
+   {}
+
+   BOOST_CONTAINER_FORCEINLINE ~scoped_alloc_object_destructor()
+   {  if(mp) allocator_traits<Allocator>::destroy(ma, mp);  }
+
+   BOOST_CONTAINER_FORCEINLINE void release()
+   {  mp = 0;  }
+};
+
+template<class Allocator, class T>
+class scoped_alloc_object_destructor<Allocator, T, true>
+{
+   public:
+   BOOST_CONTAINER_FORCEINLINE scoped_alloc_object_destructor(Allocator &, T *)
+   {}
+
+   BOOST_CONTAINER_FORCEINLINE void release()
+   {}
+};
+
+}  //namespace dtl {
+
 #endif   //#ifndef BOOST_CONTAINER_DOXYGEN_INVOKED
 
 //! The class template allocator_traits supplies a uniform interface to all allocator types.
@@ -275,8 +344,17 @@ struct allocator_traits
 {
    //allocator_type
    typedef Allocator allocator_type;
-   //value_type
+   #if defined(BOOST_CONTAINER_GCC_COMPATIBLE_HAS_DIAGNOSTIC_IGNORED)
+   #pragma GCC diagnostic push
+   #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+   #endif
+
+   //value_type (std::allocator<void>::value_type is deprecated since C++17)
    typedef typename allocator_type::value_type value_type;
+
+   #if defined(BOOST_CONTAINER_GCC_COMPATIBLE_HAS_DIAGNOSTIC_IGNORED)
+   #pragma GCC diagnostic pop
+   #endif
 
    #if defined(BOOST_CONTAINER_DOXYGEN_INVOKED)
       //! Allocator::pointer if such a type exists; otherwise, value_type*
@@ -525,15 +603,9 @@ struct allocator_traits
          (Allocator & a, Pair* p, try_emplace_t, BOOST_FWD_REF(KeyType) k, BOOST_FWD_REF(Args) ...args)
       {
          allocator_traits::construct(a, dtl::addressof(p->first), ::boost::forward<KeyType>(k));
-         BOOST_CONTAINER_TRY{
-            allocator_traits::construct(a, dtl::addressof(p->second), ::boost::forward<Args>(args)...);
-         }
-         BOOST_CONTAINER_CATCH(...) {
-            typedef typename Pair::first_type first_type;
-            dtl::addressof(p->first)->~first_type();
-            BOOST_CONTAINER_RETHROW
-         }
-         BOOST_CONTAINER_CATCH_END
+         dtl::scoped_alloc_object_destructor<Allocator, typename Pair::first_type> guard_first(a, dtl::addressof(p->first));
+         allocator_traits::construct(a, dtl::addressof(p->second), ::boost::forward<Args>(args)...);
+         guard_first.release();
       }
    #endif
 
@@ -555,8 +627,18 @@ struct allocator_traits
 
    #if !defined(BOOST_CONTAINER_DOXYGEN_INVOKED)
    private:
+   #if defined(BOOST_CONTAINER_GCC_COMPATIBLE_HAS_DIAGNOSTIC_IGNORED)
+   #pragma GCC diagnostic push
+   #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+   #endif
+
+   //std::allocator<T>::allocate(n, hint) is deprecated since C++17
    inline static pointer priv_allocate(dtl::true_type, Allocator &a, size_type n, const_void_pointer p)
    {  return a.allocate(n, p);  }
+
+   #if defined(BOOST_CONTAINER_GCC_COMPATIBLE_HAS_DIAGNOSTIC_IGNORED)
+   #pragma GCC diagnostic pop
+   #endif
 
    inline static pointer priv_allocate(dtl::false_type, Allocator &a, size_type n, const_void_pointer)
    {  return a.allocate(n);  }
@@ -615,15 +697,9 @@ struct allocator_traits
          priv_construct(dtl::true_type, Allocator &a, T *p, try_emplace_t, BOOST_FWD_REF(KeyType) k, BOOST_FWD_REF(Args) ...args)
       {
          a.construct(dtl::addressof(p->first), ::boost::forward<KeyType>(k));
-         BOOST_CONTAINER_TRY{
-            a.construct(dtl::addressof(p->second), ::boost::forward<Args>(args)...);
-         }
-         BOOST_CONTAINER_CATCH(...) {
-            typedef typename T::first_type first_type;
-            dtl::addressof(p->first)->~first_type();
-            BOOST_CONTAINER_RETHROW
-         }
-         BOOST_CONTAINER_CATCH_END
+         dtl::scoped_alloc_object_destructor<Allocator, typename T::first_type> guard_first(a, dtl::addressof(p->first));
+         a.construct(dtl::addressof(p->second), ::boost::forward<Args>(args)...);
+         guard_first.release();
       }
 
       template<class T, class ...Args>
@@ -655,15 +731,9 @@ struct allocator_traits
          construct(Allocator &a, T *p, try_emplace_t, BOOST_FWD_REF(KeyType) k BOOST_MOVE_I##N BOOST_MOVE_UREF##N)\
       {\
          allocator_traits::construct(a, dtl::addressof(p->first), ::boost::forward<KeyType>(k));\
-         BOOST_CONTAINER_TRY{\
-            allocator_traits::construct(a, dtl::addressof(p->second) BOOST_MOVE_I##N BOOST_MOVE_FWD##N);\
-         }\
-         BOOST_CONTAINER_CATCH(...) {\
-            typedef typename T::first_type first_type;\
-            dtl::addressof(p->first)->~first_type();\
-            BOOST_CONTAINER_RETHROW\
-         }\
-         BOOST_CONTAINER_CATCH_END\
+         dtl::scoped_alloc_object_destructor<Allocator, typename T::first_type> guard_first(a, dtl::addressof(p->first));\
+         allocator_traits::construct(a, dtl::addressof(p->second) BOOST_MOVE_I##N BOOST_MOVE_FWD##N);\
+         guard_first.release();\
       }\
       \
       //
@@ -718,10 +788,73 @@ struct allocator_traits
 
 #if !defined(BOOST_CONTAINER_DOXYGEN_INVOKED)
 
+//! Obtains the allocator type used by a container from the allocator
+//! template argument. If \c AllocatorOrVoid is \c void, yields
+//! \c new_allocator<T>. If \c AllocatorOrVoid::value_type is \c void,
+//! yields the allocator rebound to \c T via \c portable_rebind_alloc.
+//! Otherwise, yields \c AllocatorOrVoid unchanged.
+//!
+//! portable_rebind_alloc is only formed when value_type is void (partial
+//! specialization). Eager if_c would break allocators that are not
+//! pointer_rebind-able (e.g. static_storage_allocator).
+//!
+//! The default argument must not form AllocatorOrVoid::value_type when
+//! AllocatorOrVoid is void: GCC 7 instantiates real_allocator's primary
+//! template (and thus this default) while forming hub's initializer_list
+//! constructor / C++17 deduction guides.
+
+#if defined(BOOST_CONTAINER_GCC_COMPATIBLE_HAS_DIAGNOSTIC_IGNORED)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
+
+namespace dtl {
+
+template<class A, bool = is_same<A, void>::value>
+struct is_void_value_type
+{
+   BOOST_STATIC_CONSTEXPR bool value = is_same<typename A::value_type, void>::value;
+};
+
+template<class A>
+struct is_void_value_type<A, true>
+{
+   BOOST_STATIC_CONSTEXPR bool value = false;
+};
+
+}  //namespace dtl {
+
+template
+   < class T
+   , class AllocatorOrVoid
+   , bool = dtl::is_void_value_type<AllocatorOrVoid>::value
+   >
+struct real_allocator_rebind
+{
+   typedef AllocatorOrVoid type;
+};
+
+template<class T, class AllocatorOrVoid>
+struct real_allocator_rebind<T, AllocatorOrVoid, true>
+{
+   typedef typename allocator_traits<AllocatorOrVoid>::template
+      portable_rebind_alloc<T>::type type;
+};
+
+template<class T>
+struct real_allocator_rebind<T, void>
+{
+   typedef new_allocator<T> type;
+};
+
+#if defined(BOOST_CONTAINER_GCC_COMPATIBLE_HAS_DIAGNOSTIC_IGNORED)
+#pragma GCC diagnostic pop
+#endif
+
 template<class T, class AllocatorOrVoid>
 struct real_allocator
 {
-   typedef AllocatorOrVoid type;
+   typedef typename real_allocator_rebind<T, AllocatorOrVoid>::type type;
 };
 
 template<class T>

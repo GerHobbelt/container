@@ -403,9 +403,9 @@ class small_vector_base
       : base_type(initial_capacity_t(), this->internal_storage(), initial_capacity, ::boost::forward<AllocFwd>(a))
    {}
 
-   template<class AllocFwd>
-   inline explicit small_vector_base(initial_capacity_t, size_type initial_capacity, BOOST_FWD_REF(AllocFwd) a, small_vector_base &x)
-      : base_type(initial_capacity_t(), this->internal_storage(), initial_capacity, ::boost::forward<AllocFwd>(a), x)
+   template<class AllocFwd, bool PropagateAllocator>
+   inline explicit small_vector_base(initial_capacity_t, size_type initial_capacity, BOOST_FWD_REF(AllocFwd) a, small_vector_base &x, dtl::bool_<PropagateAllocator> p)
+      : base_type(initial_capacity_t(), this->internal_storage(), initial_capacity, ::boost::forward<AllocFwd>(a), x, p)
    {}
 
    inline explicit small_vector_base(maybe_initial_capacity_t, size_type initial_capacity, size_type initial_size)
@@ -460,6 +460,14 @@ class small_vector_base
    //! <b>Complexity</b>: Constant if both use heap storage, linear in the small buffers otherwise.
    inline void swap(small_vector_base &other)
    {  return this->base_type::prot_swap_small(other, 0u);  }
+
+   //! <b>Effects</b>: x.swap(y)
+   //!
+   //! <b>Complexity</b>: Constant if both use heap storage, linear in the small
+   //!   buffers otherwise.
+   inline friend void swap(small_vector_base &x, small_vector_base &y)
+      BOOST_NOEXCEPT_IF(BOOST_NOEXCEPT(x.swap(y)))
+   {  x.swap(y);  }
 
 #ifdef BOOST_CONTAINER_DOXYGEN_INVOKED
    public:
@@ -802,7 +810,7 @@ inline typename small_vector_allocator<T, VoidAlloc, Options>::pointer
 //! \tparam T The type of object that is stored in the small_vector
 //! \tparam N The number of preallocated elements stored inside small_vector. It shall be less than Allocator::max_size();
 //! \tparam Allocator The allocator used for memory management when the number of elements exceeds N. Use void
-//!   for the default allocator
+//!   for the default allocator. An allocator whose \c value_type is \c void is rebound to \c T.
 //! \tparam Options A type produced from \c boost::container::small_vector_options.
 template <class T, std::size_t N, class Allocator BOOST_CONTAINER_DOCONLY(= void), class Options BOOST_CONTAINER_DOCONLY(= void) >
 class small_vector
@@ -831,6 +839,16 @@ class small_vector
 
    //! @brief The capacity/max size of the container
    BOOST_STATIC_CONSTEXPR size_type static_capacity = small_vector_storage_definer<T, N, Options>::type::sms_size;
+
+   #ifndef BOOST_CONTAINER_DOXYGEN_INVOKED
+   private:
+   //The internal capacity must be representable by the stored_size option
+   typedef typename default_if_void
+      <typename dtl::get_small_vector_opt<Options>::type::stored_size_type, std::size_t>::type opt_stored_size_t;
+   BOOST_CONTAINER_STATIC_ASSERT_MSG
+      ( (small_vector_storage_definer<T, N, Options>::type::sms_size <= std::size_t(opt_stored_size_t(-1)))
+      , "N is too big for the stored_size option");
+   #endif   //#ifndef BOOST_CONTAINER_DOXYGEN_INVOKED
 
    public:
    //! <b>Effects</b>: Constructs an empty small_vector using its internal storage; no dynamic
@@ -983,7 +1001,7 @@ class small_vector
    //!
    //! <b>Complexity</b>: Constant if other holds dynamic storage, linear to other.size() otherwise.
    inline explicit small_vector(BOOST_RV_REF(base_type) other)
-      : base_type(initial_capacity_t(), internal_capacity(), ::boost::move(other.get_stored_allocator()), other)
+      : base_type(initial_capacity_t(), internal_capacity(), ::boost::move(other.get_stored_allocator()), other, dtl::true_())
    {}
 
    //! <b>Effects</b>: Move constructs a small_vector. If other holds dynamically allocated storage
@@ -994,7 +1012,7 @@ class small_vector
    //! <b>Complexity</b>: Constant if other holds dynamic storage, linear to other.size() otherwise.
    inline small_vector(BOOST_RV_REF(small_vector) other)
       BOOST_NOEXCEPT_IF(boost::container::dtl::is_nothrow_move_constructible<value_type>::value)
-      : base_type(initial_capacity_t(), internal_capacity(), ::boost::move(other.get_stored_allocator()), other)
+      : base_type(initial_capacity_t(), internal_capacity(), ::boost::move(other.get_stored_allocator()), other, dtl::true_())
    {}
 
    //! <b>Effects</b>: Move constructs a small_vector using the specified allocator. If the
@@ -1004,7 +1022,7 @@ class small_vector
    //!
    //! <b>Complexity</b>: Constant if the storage can be transferred, linear to other.size() otherwise.
    inline small_vector(BOOST_RV_REF(small_vector) other, const BOOST_CONTAINER_DOC1ST(allocator_type, typename dtl::type_identity<allocator_type>::type) &a)
-      : base_type(initial_capacity_t(), internal_capacity(), a, other)
+      : base_type(initial_capacity_t(), internal_capacity(), a, other, dtl::false_())
    {}
 
    #if !defined(BOOST_NO_CXX11_HDR_INITIALIZER_LIST)
@@ -1062,6 +1080,13 @@ class small_vector
    //! <b>Complexity</b>: Linear to the number of elements stored in the small buffers.
    inline void swap(small_vector &other)
    {  return this->base_type::prot_swap(other, static_capacity);  }
+
+   //! <b>Effects</b>: x.swap(y)
+   //!
+   //! <b>Complexity</b>: Linear to the number of elements stored in the small buffers.
+   inline friend void swap(small_vector &x, small_vector &y)
+      BOOST_NOEXCEPT_IF(BOOST_NOEXCEPT(x.swap(y)))
+   {  x.swap(y);  }
 
    //! <b>Effects</b>: Tries to reduce capacity() to the current size(). Once the capacity
    //!   changes, the container permanently switches to dynamically allocated storage even if

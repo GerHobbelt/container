@@ -12,8 +12,10 @@
 #include <boost/container/vector.hpp>
 #include <boost/container/adaptive_pool.hpp>
 #include "movable_int.hpp"
+#include "void_allocator_test.hpp"
 #include "list_test.hpp"
 #include "vector_test.hpp"
+#include "extended_allocator_test.hpp"
 
 using namespace boost::container;
 
@@ -32,6 +34,9 @@ namespace container {
 //Explicit instantiations to catch compilation errors
 template class adaptive_pool<int>;
 template class adaptive_pool<oint_t>;
+template class private_adaptive_pool<int>;
+template class adaptive_pool<void>;
+template class private_adaptive_pool<void>;
 
 }} //boost::container
 
@@ -49,8 +54,90 @@ typedef boost::container::vector<oint_t, adapt_onode_allocator_t> MyOVector;
 typedef boost::container::vector<int, adapt_node_allocator_v1_t>     MyVectorV1;
 typedef boost::container::vector<oint_t, adapt_onode_allocator_v1_t> MyOVectorV1;
 
+//private_adaptive_pool: copies have another pool, so they don't compare equal (also void)
+template<class Alloc>
+bool test_private_pool_comparison()
+{
+   const Alloc a;
+   const Alloc b(a);
+   return (a == a) && !(a != a) && !(a == b) && (a != b);
+}
+
+//Propagation traits seen by the containers
+template<class Alloc, bool POCCA, bool POCMA, bool POCS, bool AlwaysEqual>
+void test_propagation_traits()
+{
+   typedef boost::container::allocator_traits<Alloc> traits_t;
+   BOOST_CONTAINER_STATIC_ASSERT((traits_t::propagate_on_container_copy_assignment::value == POCCA));
+   BOOST_CONTAINER_STATIC_ASSERT((traits_t::propagate_on_container_move_assignment::value == POCMA));
+   BOOST_CONTAINER_STATIC_ASSERT((traits_t::propagate_on_container_swap::value == POCS));
+   BOOST_CONTAINER_STATIC_ASSERT((traits_t::is_always_equal::value == AlwaysEqual));
+}
+
+//private_adaptive_pool: each allocator owns its pool. The nodes must stay with the pool that
+//allocated them when containers are moved, move assigned or swapped, also after the source
+//container (and its allocator) is destroyed.
+template<class List>
+bool test_private_pool_transfer()
+{
+   typedef typename List::allocator_type alloc_t;
+   {  //Copies have another pool: they don't compare equal
+      alloc_t a;
+      alloc_t b(a);
+      if (a == b || !(a == a))
+         return false;
+   }
+   const int n = 300;
+   for (int op = 0; op != 4; ++op) {
+      List *src = new List;
+      for (int i = 0; i != n; ++i) src->push_back(i);
+      List dst;
+      dst.push_back(-1);
+      if (op == 0) {
+         List tmp(boost::move(*src));
+         dst.swap(tmp);
+      }
+      else if (op == 1) {
+         alloc_t a;
+         List tmp(boost::move(*src), a);
+         dst.swap(tmp);
+      }
+      else if (op == 2) {
+         dst = boost::move(*src);
+      }
+      else {
+         dst.swap(*src);
+      }
+      delete src;
+      dst.push_back(n);
+      if (int(dst.size()) != n + 1 || dst.front() != 0 || dst.back() != n)
+         return false;
+   }
+   return true;
+}
+
 int main ()
 {
+   if(!test::test_void_allocator_conversions< adaptive_pool<void> >() ||
+      !test::test_void_allocator_conversions< adaptive_pool<void, 256, 2, 1, 1> >() ||
+      !test::test_void_allocator_conversions< private_adaptive_pool<void> >() ||
+      !test::test_void_allocator_conversions< private_adaptive_pool<void, 256, 2, 1, 1> >())
+      return 1;
+   if(!test_private_pool_comparison< private_adaptive_pool<void> >() ||
+      !test_private_pool_comparison< private_adaptive_pool<int> >())
+      return 1;
+
+   //adaptive_pool shares a pool for each type: all instances are equal and nothing propagates
+   test_propagation_traits<adaptive_pool<int>, false, false, false, true>();
+   test_propagation_traits<adaptive_pool<int, 256, 2, 1, 1>, false, false, false, true>();
+   //private_adaptive_pool: the pool moves with the allocator on container move assignment and swap
+   test_propagation_traits<private_adaptive_pool<int>, false, true, true, false>();
+   test_propagation_traits<private_adaptive_pool<int, 256, 2, 1, 1>, false, true, true, false>();
+
+   if(!test_private_pool_transfer< boost::container::list<int, private_adaptive_pool<int> > >())
+      return 1;
+   if(!test_private_pool_transfer< boost::container::list<int, private_adaptive_pool<int, 256, 2, 1, 1> > >())
+      return 1;
    if(test::list_test<MyList, true>())
       return 1;
    if(test::list_test<MyOList, true>())
@@ -67,6 +154,18 @@ int main ()
    if(test::vector_test<MyVectorV1>())
       return 1;
    if(test::vector_test<MyOVectorV1>())
+      return 1;
+
+   //The Version 2 chain interface: containers reach it only for some
+   //sizes, so exercise it directly.
+   if(test::extended_pool_allocator_test<adapt_node_allocator_t>("adaptive_pool<int>"))
+      return 1;
+   if(test::extended_pool_allocator_test< adaptive_pool<double> >("adaptive_pool<double>"))
+      return 1;
+   //Over-aligned type (bigger than the dlmalloc alignment)
+   if(test::extended_pool_allocator_test<adapt_onode_allocator_t>("adaptive_pool<overaligned>"))
+      return 1;
+   if(test::extended_allocator_test< private_adaptive_pool<oint_t> >("private_adaptive_pool<overaligned>"))
       return 1;
 
    return 0;

@@ -281,14 +281,9 @@ BOOST_CONTAINER_DOC1ST(void, typename dtl::enable_if<dtl::is_pair<Pair> BOOST_MO
    , Pair* p)
 {
    dispatch_uses_allocator(construct_alloc, arg_alloc, dtl::addressof(p->first));
-   BOOST_CONTAINER_TRY{
-      dispatch_uses_allocator(construct_alloc, arg_alloc, dtl::addressof(p->second));
-   }
-   BOOST_CONTAINER_CATCH(...) {
-      allocator_traits<ConstructAlloc>::destroy(construct_alloc, dtl::addressof(p->first));
-      BOOST_CONTAINER_RETHROW
-   }
-   BOOST_CONTAINER_CATCH_END
+   dtl::scoped_alloc_object_destructor<ConstructAlloc, typename Pair::first_type> guard_first(construct_alloc, dtl::addressof(p->first));
+   dispatch_uses_allocator(construct_alloc, arg_alloc, dtl::addressof(p->second));
+   guard_first.release();
 }
 
 
@@ -302,14 +297,9 @@ BOOST_CONTAINER_DOC1ST(void, typename dtl::enable_if<dtl::is_pair<Pair> BOOST_MO
    , Pair* p, BOOST_FWD_REF(U) x, BOOST_FWD_REF(V) y)
 {
    dispatch_uses_allocator(construct_alloc, arg_alloc, dtl::addressof(p->first), ::boost::forward<U>(x));
-   BOOST_CONTAINER_TRY{
-      dispatch_uses_allocator(construct_alloc, arg_alloc, dtl::addressof(p->second), ::boost::forward<V>(y));
-   }
-   BOOST_CONTAINER_CATCH(...){
-      allocator_traits<ConstructAlloc>::destroy(construct_alloc, dtl::addressof(p->first));
-      BOOST_CONTAINER_RETHROW
-   }
-   BOOST_CONTAINER_CATCH_END
+   dtl::scoped_alloc_object_destructor<ConstructAlloc, typename Pair::first_type> guard_first(construct_alloc, dtl::addressof(p->first));
+   dispatch_uses_allocator(construct_alloc, arg_alloc, dtl::addressof(p->second), ::boost::forward<V>(y));
+   guard_first.release();
 }
 
 template < typename ConstructAlloc
@@ -336,28 +326,29 @@ typename dtl::enable_if_and
 {  dispatch_uses_allocator(construct_alloc, arg_alloc, p, ::boost::move(x.first), ::boost::move(x.second));  }
 
 
-//piecewise construction from boost::tuple
+//piecewise construction from boost::tuple. The null_type padding is written as the
+//dependent "typename pair_impl::boost_tuple_null<BoostTuple>::type" so that deduction
+//fails (SFINAE) instead of a hard error when std::tuple binds to BoostTuple in C++17,
+//(since C++17 (P0522), a variadic template like std::tuple is also a valid argument for
+//fixed paramter template-template parameter)
 #define BOOST_DISPATCH_USES_ALLOCATOR_PIECEWISE_CONSTRUCT_BOOST_TUPLE_CODE(N,M)\
 template< typename ConstructAlloc, typename AllocArg, class Pair \
         , template<class, class, class, class, class, class, class, class, class, class> class BoostTuple \
          BOOST_MOVE_I_IF(BOOST_MOVE_OR(N,M)) BOOST_MOVE_CLASS##N BOOST_MOVE_I_IF(BOOST_MOVE_AND(N,M)) BOOST_MOVE_CLASSQ##M > \
-typename dtl::enable_if< dtl::is_pair<Pair> BOOST_MOVE_I void>::type\
+typename dtl::enable_if_c< dtl::is_pair<Pair>::value &&\
+      !(pair_impl::is_tuple_null<BOOST_MOVE_LAST_TARG##N>::value || pair_impl::is_tuple_null<BOOST_MOVE_LAST_TARGQ##M>::value)\
+   BOOST_MOVE_I void>::type\
    dispatch_uses_allocator( ConstructAlloc & construct_alloc, BOOST_FWD_REF(AllocArg) arg_alloc, Pair* pair, piecewise_construct_t\
-      , BoostTuple<BOOST_MOVE_TARG##N  BOOST_MOVE_I##N BOOST_MOVE_REPEAT(BOOST_MOVE_SUB(10,N),::boost::tuples::null_type)> p\
-      , BoostTuple<BOOST_MOVE_TARGQ##M BOOST_MOVE_I##M BOOST_MOVE_REPEAT(BOOST_MOVE_SUB(10,M),::boost::tuples::null_type)> q)\
+      , BoostTuple<BOOST_MOVE_TARG##N  BOOST_MOVE_I##N BOOST_MOVE_REPEAT(BOOST_MOVE_SUB(10,N),typename pair_impl::boost_tuple_null<BoostTuple>::type)> p\
+      , BoostTuple<BOOST_MOVE_TARGQ##M BOOST_MOVE_I##M BOOST_MOVE_REPEAT(BOOST_MOVE_SUB(10,M),typename pair_impl::boost_tuple_null<BoostTuple>::type)> q)\
 {\
    (void)p; (void)q;\
    dispatch_uses_allocator\
       (construct_alloc, arg_alloc, dtl::addressof(pair->first) BOOST_MOVE_I_IF(N) BOOST_MOVE_TMPL_GET##N);\
-   BOOST_CONTAINER_TRY{\
-      dispatch_uses_allocator\
-         (construct_alloc, arg_alloc, dtl::addressof(pair->second) BOOST_MOVE_I_IF(M) BOOST_MOVE_TMPL_GETQ##M);\
-   }\
-   BOOST_CONTAINER_CATCH(...) {\
-      allocator_traits<ConstructAlloc>::destroy(construct_alloc, dtl::addressof(pair->first));\
-      BOOST_CONTAINER_RETHROW\
-   }\
-   BOOST_CONTAINER_CATCH_END\
+   dtl::scoped_alloc_object_destructor<ConstructAlloc, typename Pair::first_type> guard_first(construct_alloc, dtl::addressof(pair->first));\
+   dispatch_uses_allocator\
+      (construct_alloc, arg_alloc, dtl::addressof(pair->second) BOOST_MOVE_I_IF(M) BOOST_MOVE_TMPL_GETQ##M);\
+   guard_first.release();\
 }\
 //
 BOOST_MOVE_ITER2D_0TOMAX(9, BOOST_DISPATCH_USES_ALLOCATOR_PIECEWISE_CONSTRUCT_BOOST_TUPLE_CODE)
@@ -373,14 +364,9 @@ BOOST_MOVE_ITER2D_0TOMAX(9, BOOST_DISPATCH_USES_ALLOCATOR_PIECEWISE_CONSTRUCT_BO
    {
       (void)t1; (void)t2;
       dispatch_uses_allocator(construct_alloc, arg_alloc, dtl::addressof(pair->first), ::boost::forward<Args1>(get<Indexes1>(t1))...);
-      BOOST_CONTAINER_TRY{
-         dispatch_uses_allocator(construct_alloc, arg_alloc, dtl::addressof(pair->second), ::boost::forward<Args2>(get<Indexes2>(t2))...);
-      }
-      BOOST_CONTAINER_CATCH(...){
-         allocator_traits<ConstructAlloc>::destroy(construct_alloc, dtl::addressof(pair->first));
-         BOOST_CONTAINER_RETHROW
-      }
-      BOOST_CONTAINER_CATCH_END
+      dtl::scoped_alloc_object_destructor<ConstructAlloc, typename Pair::first_type> guard_first(construct_alloc, dtl::addressof(pair->first));
+      dispatch_uses_allocator(construct_alloc, arg_alloc, dtl::addressof(pair->second), ::boost::forward<Args2>(get<Indexes2>(t2))...);
+      guard_first.release();
    }
 
    template< typename ConstructAlloc, typename AllocArg, class Pair
@@ -409,15 +395,10 @@ BOOST_MOVE_ITER2D_0TOMAX(9, BOOST_DISPATCH_USES_ALLOCATOR_PIECEWISE_CONSTRUCT_BO
       (void)p; (void)q;\
       dispatch_uses_allocator\
          (construct_alloc, arg_alloc, dtl::addressof(pair->first) BOOST_MOVE_I_IF(N) BOOST_MOVE_GET_IDX##N);\
-      BOOST_CONTAINER_TRY{\
-         dispatch_uses_allocator\
-            (construct_alloc, arg_alloc, dtl::addressof(pair->second) BOOST_MOVE_I_IF(M) BOOST_MOVE_GET_IDXQ##M);\
-      }\
-      BOOST_CONTAINER_CATCH(...) {\
-         allocator_traits<ConstructAlloc>::destroy(construct_alloc, dtl::addressof(pair->first));\
-         BOOST_CONTAINER_RETHROW\
-      }\
-      BOOST_CONTAINER_CATCH_END\
+      dtl::scoped_alloc_object_destructor<ConstructAlloc, typename Pair::first_type> guard_first(construct_alloc, dtl::addressof(pair->first));\
+      dispatch_uses_allocator\
+         (construct_alloc, arg_alloc, dtl::addressof(pair->second) BOOST_MOVE_I_IF(M) BOOST_MOVE_GET_IDXQ##M);\
+      guard_first.release();\
    }\
    //
    BOOST_MOVE_ITER2D_0TOMAX(9, BOOST_DISPATCH_USES_ALLOCATOR_PIECEWISE_CONSTRUCT_MSVC2010_TUPLE_CODE)
@@ -444,15 +425,10 @@ BOOST_MOVE_ITER2D_0TOMAX(9, BOOST_DISPATCH_USES_ALLOCATOR_PIECEWISE_CONSTRUCT_BO
       (void)p; (void)q;\
       dispatch_uses_allocator\
          (construct_alloc, arg_alloc, dtl::addressof(pair->first) BOOST_MOVE_I_IF(N) BOOST_MOVE_GET_IDX##N);\
-      BOOST_CONTAINER_TRY{\
-         dispatch_uses_allocator\
-            (construct_alloc, arg_alloc, dtl::addressof(pair->second) BOOST_MOVE_I_IF(M) BOOST_MOVE_GET_IDXQ##M);\
-      }\
-      BOOST_CONTAINER_CATCH(...) {\
-         allocator_traits<ConstructAlloc>::destroy(construct_alloc, dtl::addressof(pair->first));\
-         BOOST_CONTAINER_RETHROW\
-      }\
-      BOOST_CONTAINER_CATCH_END\
+      dtl::scoped_alloc_object_destructor<ConstructAlloc, typename Pair::first_type> guard_first(construct_alloc, dtl::addressof(pair->first));\
+      dispatch_uses_allocator\
+         (construct_alloc, arg_alloc, dtl::addressof(pair->second) BOOST_MOVE_I_IF(M) BOOST_MOVE_GET_IDXQ##M);\
+      guard_first.release();\
    }\
    //
    BOOST_MOVE_ITER2D_0TOMAX(BOOST_DISPATCH_USES_ALLOCATOR_PIECEWISE_CONSTRUCT_MSVC2012_TUPLE_MAX_IT, BOOST_DISPATCH_USES_ALLOCATOR_PIECEWISE_CONSTRUCT_MSVC2012_TUPLE_CODE)
@@ -483,14 +459,9 @@ typename dtl::enable_if< dtl::is_pair<Pair>, void >::type
    (ConstructAlloc & construct_alloc, BOOST_FWD_REF(AllocArg) arg_alloc, Pair* p, try_emplace_t, BOOST_FWD_REF(KeyType) k, BOOST_FWD_REF(Args) ...args)
 {
    dispatch_uses_allocator(construct_alloc, arg_alloc, dtl::addressof(p->first), ::boost::forward<KeyType>(k));
-   BOOST_CONTAINER_TRY{
-      dispatch_uses_allocator(construct_alloc, arg_alloc, dtl::addressof(p->second), ::boost::forward<Args>(args)...);
-   }
-   BOOST_CONTAINER_CATCH(...) {
-      allocator_traits<ConstructAlloc>::destroy(construct_alloc, dtl::addressof(p->first));
-      BOOST_CONTAINER_RETHROW
-   }
-   BOOST_CONTAINER_CATCH_END
+   dtl::scoped_alloc_object_destructor<ConstructAlloc, typename Pair::first_type> guard_first(construct_alloc, dtl::addressof(p->first));
+   dispatch_uses_allocator(construct_alloc, arg_alloc, dtl::addressof(p->second), ::boost::forward<Args>(args)...);
+   guard_first.release();
 }
 
 template <typename T, typename AllocArg, class ...Args>
@@ -518,14 +489,9 @@ inline T construct_dispatch_uses_allocator
        BOOST_FWD_REF(KeyType) k BOOST_MOVE_I##N BOOST_MOVE_UREF##N)\
    {\
       dispatch_uses_allocator(construct_alloc, arg_alloc, dtl::addressof(p->first), ::boost::forward<KeyType>(k));\
-      BOOST_CONTAINER_TRY{\
-         dispatch_uses_allocator(construct_alloc, arg_alloc, dtl::addressof(p->second) BOOST_MOVE_I##N BOOST_MOVE_FWD##N);\
-      }\
-      BOOST_CONTAINER_CATCH(...) {\
-         allocator_traits<ConstructAlloc>::destroy(construct_alloc, dtl::addressof(p->first));\
-         BOOST_CONTAINER_RETHROW\
-      }\
-      BOOST_CONTAINER_CATCH_END\
+      dtl::scoped_alloc_object_destructor<ConstructAlloc, typename Pair::first_type> guard_first(construct_alloc, dtl::addressof(p->first));\
+      dispatch_uses_allocator(construct_alloc, arg_alloc, dtl::addressof(p->second) BOOST_MOVE_I##N BOOST_MOVE_FWD##N);\
+      guard_first.release();\
    }\
 //
 BOOST_MOVE_ITERATE_0TO9(BOOST_CONTAINER_DISPATCH_USES_ALLOCATOR_PAIR_TRY_EMPLACE_CODE)

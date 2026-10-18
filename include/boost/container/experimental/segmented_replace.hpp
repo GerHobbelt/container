@@ -20,7 +20,7 @@
 
 #include <boost/container/detail/config_begin.hpp>
 #include <boost/container/detail/workaround.hpp>
-#include <boost/container/experimental/segmented_iterator_traits.hpp>
+#include <boost/container/experimental/detail/segmented_common_algo.hpp>
 #include <boost/container/detail/iterator.hpp>
 
 namespace boost {
@@ -57,16 +57,19 @@ void segmented_replace_dispatch
    segment_iterator sfirst = traits::segment(first);
    segment_iterator slast  = traits::segment(last);
 
-   if(sfirst == slast) {
-      (segmented_replace_dispatch)(traits::local(first), traits::local(last), old_val, new_val, is_local_seg_t(), local_cat_t());
-   }
-   else {
-      (segmented_replace_dispatch)(traits::local(first), traits::end(sfirst), old_val, new_val, is_local_seg_t(), local_cat_t());
+   local_iterator lb = traits::local(first);
+
+   for(;;) {
+      const bool last_seg = sfirst == slast;
+      const local_iterator le = last_seg ? traits::local(last) : traits::end(sfirst);
+      (segmented_replace_dispatch)(lb, le, old_val, new_val, is_local_seg_t(), local_cat_t());
+      if(BOOST_UNLIKELY(last_seg))
+         break;
 
       for(++sfirst; sfirst != slast; ++sfirst)
          (segmented_replace_dispatch)(traits::begin(sfirst), traits::end(sfirst), old_val, new_val, is_local_seg_t(), local_cat_t());
 
-      (segmented_replace_dispatch)(traits::begin(sfirst), traits::local(last), old_val, new_val, is_local_seg_t(), local_cat_t());
+      lb = traits::begin(sfirst);
    }
 }
 

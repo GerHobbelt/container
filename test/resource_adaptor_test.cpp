@@ -8,7 +8,7 @@
 //
 //////////////////////////////////////////////////////////////////////////////
 #include <boost/container/pmr/resource_adaptor.hpp>
-#include <boost/core/lightweight_test.hpp>
+#include "lightweight_test.hpp"
 #include "propagation_test_allocator.hpp"
 #include "derived_from_memory_resource.hpp"
 #include <boost/container/new_allocator.hpp>
@@ -188,6 +188,15 @@ void test_do_allocate_deallocate()
 
       //new_allocator, high alignment
       mr.deallocate(mr.allocate(16, max_alignment_value*4u), 16, max_alignment_value*4u);
+
+      //new_allocator, zero size, low alignment: must return a non-null pointer
+      void *pz = mr.allocate(0, 1);
+      mr.deallocate(pz, 0, 1);
+
+      //new_allocator, zero size, high alignment
+      void *pza = mr.allocate(0, max_alignment_value*4u);
+      BOOST_TEST((std::size_t(pza) % (max_alignment_value*4u)) == 0u);
+      mr.deallocate(pza, 0, max_alignment_value*4u);
    }
    {
       typedef resource_adaptor<std ::allocator<int> > new_resource_alloc_t;
@@ -199,7 +208,32 @@ void test_do_allocate_deallocate()
 
       //std::allocator, high alignment
       mr.deallocate(mr.allocate(16, max_alignment_value*4u), 16, max_alignment_value*4u);
+
+      //std::allocator, zero size, low alignment: must return a non-null pointer
+      void *pz = mr.allocate(0, 1);
+      mr.deallocate(pz, 0, 1);
+
+      //std::allocator, zero size, high alignment: must return a non-null,
+      //correctly aligned pointer
+      void *pza = mr.allocate(0, max_alignment_value*4u);
+      BOOST_TEST(pza != 0);
+      BOOST_TEST((std::size_t(pza) % (max_alignment_value*4u)) == 0u);
+      mr.deallocate(pza, 0, max_alignment_value*4u);
    }
+}
+
+//The size plus the over-alignment space overflows: throw bad_alloc and do not call the allocator
+void test_do_allocate_overaligned_overflow()
+{
+   #ifndef BOOST_NO_EXCEPTIONS
+   derived_from_resource_adaptor_stateful dra;
+   dra.get_allocator().allocate_size = 0u;
+   dra.get_allocator().allocate_return = 0;
+   const std::size_t alignment = max_alignment_value*4u;
+   BOOST_TEST_THROWS(dra.do_allocate(std::size_t(-1) - 10u, alignment), boost::container::bad_alloc_t);
+   BOOST_TEST_THROWS(dra.do_allocate(std::size_t(-1), alignment), boost::container::bad_alloc_t);
+   BOOST_TEST(dra.get_allocator().allocate_size == 0u);
+   #endif
 }
 
 void test_do_is_equal()
@@ -229,6 +263,7 @@ int main()
    test_move_assign();
    test_get_allocator();
    test_do_allocate_deallocate();
+   test_do_allocate_overaligned_overflow();
    test_do_is_equal();
    return ::boost::report_errors();
 }

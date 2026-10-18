@@ -9,7 +9,7 @@
 //////////////////////////////////////////////////////////////////////////////
 #include <boost/container/small_vector.hpp>
 #include <boost/container/allocator.hpp>
-#include <boost/core/lightweight_test.hpp>
+#include "lightweight_test.hpp"
 #include <boost/assert.hpp>
 using namespace boost::container;
 
@@ -104,11 +104,13 @@ void test_growth_factor_100()
 template<class Unsigned, class VectorType>
 void test_stored_size_type_impl()
 {
+   BOOST_TEST(VectorType().max_size() == typename VectorType::size_type(Unsigned(-1)));
    #ifndef BOOST_NO_EXCEPTIONS
    VectorType v;
    typedef typename VectorType::size_type    size_type;
    typedef typename VectorType::value_type   value_type;
    size_type const max = Unsigned(-1);
+   BOOST_TEST(v.max_size() == max);
    v.resize(5);
    v.resize(max);
    BOOST_TEST_THROWS(v.resize(max+1),                    std::exception);

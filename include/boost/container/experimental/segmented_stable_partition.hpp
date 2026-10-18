@@ -20,7 +20,7 @@
 
 #include <boost/container/detail/config_begin.hpp>
 #include <boost/container/detail/workaround.hpp>
-#include <boost/container/experimental/segmented_iterator_traits.hpp>
+#include <boost/container/experimental/detail/segmented_common_algo.hpp>
 #include <boost/move/utility_core.hpp>
 #include <boost/container/detail/iterator.hpp>
 
@@ -101,17 +101,17 @@ OuterIter stable_partition_scan(SegIt first, SegIt last, OuterIter result,
    segment_iterator const slast = traits::segment(last);
    local_iterator         lcur  = traits::local(first);
 
-   if(scur == slast) {
-      result = stable_partition_scan(lcur, traits::local(last), result, composer_t(composer, scur), pred, is_local_seg_t());
-   }
-   else {
-      result = stable_partition_scan(lcur, traits::end(scur), result, composer_t(composer, scur), pred, is_local_seg_t());
+   for(;;) {
+      const bool last_seg = scur == slast;
+      const local_iterator le = last_seg ? traits::local(last) : traits::end(scur);
+      result = stable_partition_scan(lcur, le, result, composer_t(composer, scur), pred, is_local_seg_t());
+      if(BOOST_UNLIKELY(last_seg))
+         return result;
       for(++scur; scur != slast; ++scur) {
          result = stable_partition_scan(traits::begin(scur), traits::end(scur), result, composer_t(composer, scur), pred, is_local_seg_t());
       }
-      result = stable_partition_scan(traits::begin(scur), traits::local(last), result, composer_t(composer, scur), pred,is_local_seg_t());
+      lcur = traits::begin(scur);
    }
-   return result;
 }
 
 template <class SegIter, class Pred>

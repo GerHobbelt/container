@@ -14,6 +14,7 @@
 #pragma warning (disable : 4673)
 #pragma warning (disable : 4671)
 #pragma warning (disable : 4244)
+#pragma warning (disable : 4530) // C++ exception handler used, but unwind semantics are not enabled
 #endif
 
 #include <memory>    //std::allocator
@@ -160,8 +161,8 @@ void stable_vector_test_template(std::size_t num_iterations, std::size_t num_ele
                      << " (" << (float(top_capacity)/float(num_iterations*num_elements) - 1)*100 << " %)"*/
                      << std::endl << std::endl;
    }
-   assert(bc::dlmalloc_all_deallocated());
-   bc::dlmalloc_trim(0);
+   assert(bc::dlmalloc_heap().all_deallocated());
+   bc::dlmalloc_heap().trim(0);
 }
 
 void print_header()

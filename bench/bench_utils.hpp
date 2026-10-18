@@ -173,6 +173,58 @@ class MyInt
    friend bool operator>=(const MyInt& a, const MyInt& b) { return a.int_ >= b.int_; }
 };
 
+//MyFatInt: same idea as MyInt but storing Count ints (32 bytes by default) so
+//benchmarks can also measure bigger elements, whose special member functions do
+//proportionally more work. Only the first int participates in int_value() and
+//in the comparison operators; the remaining ones are payload that the copy and
+//destroy operations must still touch.
+template<std::size_t Count = 8>
+class MyFatInt
+{
+   int ints_[Count];
+
+   public:
+   inline explicit MyFatInt(int i = 0)
+   {
+      for(std::size_t n = 0; n != Count; ++n)
+         ints_[n] = i++;
+   }
+
+   inline MyFatInt(const MyFatInt &other)
+   {
+      for(std::size_t n = 0; n != Count; ++n)
+         ints_[n] = other.ints_[n];
+   }
+
+   inline MyFatInt & operator=(const MyFatInt &other)
+   {
+      for(std::size_t n = 0; n != Count; ++n)
+         ints_[n] = other.ints_[n];
+      return *this;
+   }
+
+   inline ~MyFatInt()
+   {
+      for(std::size_t n = 0; n != Count; ++n)
+         ints_[n] = 0;
+   }
+
+   inline int int_value() const { return ints_[0]; }
+
+   friend inline bool operator==(const MyFatInt& a, const MyFatInt& b) { return a.ints_[0] == b.ints_[0]; }
+   friend inline bool operator!=(const MyFatInt& a, const MyFatInt& b) { return a.ints_[0] != b.ints_[0]; }
+   friend inline bool operator<(const MyFatInt& a, const MyFatInt& b) { return a.ints_[0] < b.ints_[0]; }
+   friend inline bool operator>(const MyFatInt& a, const MyFatInt& b) { return a.ints_[0] > b.ints_[0]; }
+   friend inline bool operator<=(const MyFatInt& a, const MyFatInt& b) { return a.ints_[0] <= b.ints_[0]; }
+   friend inline bool operator>=(const MyFatInt& a, const MyFatInt& b) { return a.ints_[0] >= b.ints_[0]; }
+};
+
+inline int int_value(int x) { return x; }
+inline int int_value(const MyInt& x) { return x.int_value(); }
+
+template<std::size_t Count>
+inline int int_value(const MyFatInt<Count>& x) { return x.int_value(); }
+
 //Benchmark element. The NonTrivial boolean (chosen by the caller, true by
 //default) selects between two layouts of identical size:
 // - NonTrivial == true: a move-only element whose user-defined special members

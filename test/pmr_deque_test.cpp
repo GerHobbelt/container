@@ -10,6 +10,7 @@
 
 #include <boost/container/pmr/deque.hpp>
 #include <boost/container/detail/type_traits.hpp>
+#include "void_allocator_test.hpp"
 
 int main()
 {
@@ -21,8 +22,22 @@ int main()
    #if !defined(BOOST_NO_CXX11_TEMPLATE_ALIASES)
       BOOST_CONTAINER_STATIC_ASSERT(( is_same<intcontainer_t, pmr::deque<int> >::value ));
    #endif
+   //polymorphic_allocator can compare unequal so a moved-from container can hold memory
+   BOOST_CONTAINER_STATIC_ASSERT(( !boost::has_trivial_destructor_after_move<intcontainer_t>::value ));
    intcontainer_t cont(pmr::get_default_resource());
    typedef intcontainer_t::value_type value_type;
    cont.push_back(value_type());
+   ////////////////////////////////////
+   //    Void value_type allocator
+   ////////////////////////////////////
+   {
+      typedef deque<int, pmr::polymorphic_allocator<void> > voidalloc_cont_t;
+      if(!test::test_void_allocator
+            < voidalloc_cont_t
+            , pmr::polymorphic_allocator<int> >()) {
+         return 1;
+      }
+   }
+
    return 0;
 }

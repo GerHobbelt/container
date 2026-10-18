@@ -9,8 +9,11 @@
 //
 //////////////////////////////////////////////////////////////////////////////
 
-#include <boost/core/lightweight_test.hpp>
+#include "lightweight_test.hpp"
 #include <cstring> // memcmp
+#ifdef _MSC_VER
+#pragma warning(disable : 4530) // C++ exception handler used, but unwind semantics are not enabled
+#endif
 #include <iostream>
 #include <algorithm>
 #include <limits>
@@ -22,6 +25,7 @@
 #include <boost/type_traits/is_nothrow_move_constructible.hpp>
 #include "dummy_test_allocator.hpp"
 #include "propagate_allocator_test.hpp"
+#include "void_allocator_test.hpp"
 #include "check_equal_containers.hpp"
 #include "movable_int.hpp"
 
@@ -37,6 +41,7 @@
 #include "vector_test.hpp"
 #include "default_init_test.hpp"
 #include "../../intrusive/test/iterator_test.hpp"
+#include "unqualified_swap_test.hpp"
 
 using namespace boost::container;
 
@@ -135,6 +140,17 @@ template <class Devector> void test_constructor_reserve_only_front_back()
     Devector b(0, 0, reserve_only_tag_t());
     BOOST_TEST(b.get_alloc_count() == 0u);
   }
+
+  #ifndef BOOST_NO_EXCEPTIONS
+  //front_free_cap + back_free_cap overflows
+  {
+    typedef typename Devector::size_type size_type;
+    const size_type max = size_type(-1);
+    BOOST_TEST_THROWS(Devector(max, 2u, reserve_only_tag_t()), length_error_t);
+    BOOST_TEST_THROWS(Devector(2u, max, reserve_only_tag_t()), length_error_t);
+    BOOST_TEST_THROWS(Devector(max/2u + 1u, max/2u + 1u, reserve_only_tag_t()), length_error_t);
+  }
+  #endif   //#ifndef BOOST_NO_EXCEPTIONS
 }
 
 template <class Devector> void test_constructor_n()
@@ -3891,8 +3907,23 @@ int test_cont_variants()
 //Test the expected sizeof()
 BOOST_CONTAINER_STATIC_ASSERT_MSG(5*sizeof(void*) == sizeof(devector<int>), "sizeof has an unexpected value");
 
+bool test_unqualified_swap()
+{
+   namespace us = boost_container_test_unqualified_swap;
+   {  typedef boost::container::devector<int> cont;
+      cont a;  a.push_back(1);  a.push_back(2);
+      cont b;  b.push_back(7);  b.push_back(8);  b.push_back(9);
+      if(!us::test_unqualified_swap(a, b))
+         return false;
+   }
+   return true;
+}
+
 int main()
 {
+   if(!test_unqualified_swap())
+      return 1;
+
 //   boost::container::devector<boost::container::test::movable_int>a(get());
    //boost::container::devector<only_movable> b(getom());
    //boost::container::devector<only_movable> c(get_range< boost::container::devector<only_movable> >(1, 5, 5, 9));
@@ -3902,6 +3933,16 @@ int main()
    //    Allocator implementations
    ////////////////////////////////////
    //       std:allocator
+   ////////////////////////////////////
+   //    Void value_type allocator
+   ////////////////////////////////////
+   if(!test::test_void_allocator
+         < devector<int, new_allocator<void> >
+         , new_allocator<int> >()) {
+      std::cerr << "test_void_allocator devector failed" << std::endl;
+      return 1;
+   }
+
    if (test_cont_variants< std::allocator<void> >()) {
       std::cerr << "test_cont_variants< std::allocator<void> > failed" << std::endl;
       return 1;

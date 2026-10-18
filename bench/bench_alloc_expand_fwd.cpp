@@ -12,6 +12,7 @@
 #pragma warning (disable : 4512)
 #pragma warning (disable : 4267)
 #pragma warning (disable : 4244)
+#pragma warning (disable : 4530) // C++ exception handler used, but unwind semantics are not enabled
 #endif
 
 #define BOOST_CONTAINER_VECTOR_ALLOC_STATS
@@ -133,7 +134,7 @@ void vector_test_template(std::size_t num_iterations, std::size_t num_elements)
                   << (float(numalloc) + float(numexpand))/float(num_iterations)
                   << "(" << float(numalloc)/float(num_iterations) << "/" << float(numexpand)/float(num_iterations) << ")"
                << std::endl << std::endl;
-   bc::dlmalloc_trim(0);
+   bc::dlmalloc_heap().trim(0);
 }
 
 void print_header()

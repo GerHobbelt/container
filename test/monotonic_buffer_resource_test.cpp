@@ -10,7 +10,7 @@
 
 #include <boost/container/pmr/monotonic_buffer_resource.hpp>
 #include <boost/container/pmr/global_resource.hpp>
-#include <boost/core/lightweight_test.hpp>
+#include "lightweight_test.hpp"
 #include "derived_from_memory_resource.hpp"
 #include "memory_resource_logger.hpp"
 
@@ -66,8 +66,8 @@ void test_release()
    char *bufs[AllocCount];
    for(unsigned i = 0; i != unsigned(AllocCount); ++i){
       bufs[i]                    = (char*)bc.allocate(i+1);
+      BOOST_TEST(bufs[i] != 0);
    }
-   (void)bufs;
    //Should have allocated a new entry
    BOOST_TEST(mrl.m_info.size() == AllocCount);
 
@@ -97,8 +97,8 @@ void test_destructor()
       char *bufs[AllocCount];
       for(unsigned i = 0; i != unsigned(AllocCount); ++i){
          bufs[i] = (char*)bc.allocate(i+1);
+         BOOST_TEST(bufs[i] != 0);
       }
-      (void)bufs;
       //Should have allocated a new entry
       BOOST_TEST(mrl.m_info.size() == AllocCount);
 
@@ -360,6 +360,294 @@ void test_do_allocate()
    BOOST_TEST(mrl.m_info.size() == 0u);
 }
 
+void test_do_allocate_zero()
+{
+   memory_resource_logger mrl;
+
+   //(1) Fresh resource without a buffer: a zero-sized allocation returns valid address
+   {
+      monotonic_buffer_resource m(&mrl);
+      BOOST_TEST(m.current_buffer() == 0);
+      void *const p = m.allocate(0u, 1u);
+      BOOST_TEST(p != 0);
+      //No upstream allocation happened
+      BOOST_TEST(mrl.m_info.size() == 1u);
+      //remaining_storage() must not underflow
+      BOOST_TEST(m.remaining_storage(1u) < m.next_buffer_size());
+
+      //A new zero sized allocation would return the same address, but it should not trigger a new allocation
+      void *const p2 = m.allocate(0u, 1u);
+      BOOST_TEST(p == p2);
+      BOOST_TEST(mrl.m_info.size() == 1u);
+      //remaining_storage() must not underflow
+      BOOST_TEST(m.remaining_storage(1u) < m.next_buffer_size());
+   }
+   BOOST_TEST(mrl.m_mismatches == 0u);
+   BOOST_TEST(mrl.m_info.size() == 0u);
+
+   //(2) External buffer scenarios
+   {
+      boost::move_detail::aligned_storage<8u, 8u>::type storage;
+      const std::size_t buffer_size = 7u;
+      monotonic_buffer_resource m(&storage, buffer_size, &mrl);
+      char *const base = (char*)&storage;
+      BOOST_TEST(m.remaining_storage(1u) == buffer_size);
+
+      //A zero-sized allocation on a fresh, aligned buffer returns the current
+      //position without consuming storage; repeats return the same address.
+      void *const z0 = m.allocate(0u, 1u);
+      BOOST_TEST(z0 == base);
+      BOOST_TEST(m.remaining_storage(1u) == buffer_size);   //nothing consumed
+      void *const z0b = m.allocate(0u, 1u);
+      BOOST_TEST(z0b == z0);                                 //same address
+
+      //Exhaust the buffer
+      void *const full = m.allocate(buffer_size, 1u);
+      BOOST_TEST(full == base);
+      BOOST_TEST(m.remaining_storage(1u) == 0u);
+
+      //Zero-sized allocation on the exhausted (still 1-aligned) buffer returns
+      //the one-past-the-end position (non-null) without going upstream.
+      void *const zend = m.allocate(0u, 1u);
+      BOOST_TEST(zend == base + buffer_size);
+      BOOST_TEST(m.remaining_storage(1u) < m.next_buffer_size());
+      BOOST_TEST(mrl.m_info.size() == 0u);                   //no upstream alloc
+
+      //Zero-sized allocation that needs alignment padding which does not fit in
+      //the exhausted buffer returns null (no upstream allocation, no underflow).
+      void *const z4 = m.allocate(0u, 4u);
+      BOOST_TEST(z4 != 0);
+      BOOST_TEST(m.remaining_storage(1u) < m.next_buffer_size());
+      BOOST_TEST(mrl.m_info.size() == 1u);
+   }
+   BOOST_TEST(mrl.m_mismatches == 0u);
+   BOOST_TEST(mrl.m_info.size() == 0u);
+
+   //(3) Over-aligned zero-sized allocation from within a buffer returns an
+   //    aligned position without consuming bytes, and repeats are stable.
+   {
+      boost::move_detail::aligned_storage<32u, 8u>::type storage;
+      monotonic_buffer_resource m(&storage, 16u, &mrl);
+      char *const base = (char*)&storage;
+      //Misalign the current position by consuming 1 byte
+      void *const one = m.allocate(1u, 1u);
+      BOOST_TEST(one == base);
+      //Now current is base+1; a zero-sized 4-aligned request returns base+4
+      void *const z4 = m.allocate(0u, 4u);
+      BOOST_TEST(z4 == base + 4u);
+      BOOST_TEST((std::size_t(z4) % 4u) == 0u);
+      //Repeats return the same aligned address (no storage consumed)
+      void *const z4b = m.allocate(0u, 4u);
+      BOOST_TEST(z4b == z4);
+      //No upstream allocation for any of these
+      BOOST_TEST(mrl.m_info.size() == 0u);
+   }
+   BOOST_TEST(mrl.m_mismatches == 0u);
+   BOOST_TEST(mrl.m_info.size() == 0u);
+
+   //(4) A zero-sized allocation whose aligned position lands EXACTLY on the
+   //    one-past-the-end position of the current buffer must return that
+   //    (correctly aligned) past-the-end address, without allocating a new
+   //    buffer from upstream and without underflowing remaining_storage().
+   {
+      //8-aligned buffer of 4 bytes: end == base+4 is 4-aligned.
+      boost::move_detail::aligned_storage<8u, 8u>::type storage;
+      const std::size_t buffer_size = 4u;
+      monotonic_buffer_resource m(&storage, buffer_size, &mrl);
+      char *const base = (char*)&storage;
+      char *const buffer_end = base + buffer_size;
+
+      //Consume 2 bytes so the current position (base+2) is not 4-aligned and
+      //the first 4-aligned address at/after it is exactly the past-the-end
+      //position base+4.
+      void *const two = m.allocate(2u, 1u);
+      BOOST_TEST(two == base);
+      BOOST_TEST(m.remaining_storage(1u) == 2u);
+
+      //The 4-aligned zero-sized allocation must return the past-the-end address
+      void *const zend = m.allocate(0u, 4u);
+      BOOST_TEST(zend == buffer_end);
+      BOOST_TEST((std::size_t(zend) % 4u) == 0u);
+      //It consumed only the 2 bytes of padding; nothing remains, no underflow
+      BOOST_TEST(m.remaining_storage(1u) == 0u);
+      //No upstream buffer was requested
+      BOOST_TEST(mrl.m_info.size() == 0u);
+
+      void *const zend2 = m.allocate(0u, 4u);
+      BOOST_TEST(zend2 == buffer_end);
+   }
+   BOOST_TEST(mrl.m_mismatches == 0u);
+   BOOST_TEST(mrl.m_info.size() == 0u);
+
+   //(5) A zero-sized allocation whose alignment requirement would push the
+   //    aligned position STRICTLY beyond the one-past-the-end position of the
+   //    current buffer (even though the buffer still has unused bytes) must
+   //    allocate a new buffer
+   {
+      //8-aligned buffer of 6 bytes: end == base+6 is not 8-aligned.
+      boost::move_detail::aligned_storage<8u, 8u>::type storage;
+      const std::size_t buffer_size = 6u;
+      monotonic_buffer_resource m(&storage, buffer_size, &mrl);
+      char *const base = (char*)&storage;
+
+      //Consume 3 bytes so the current position is base+3 with 3 bytes left.
+      //The first 8-aligned address at/after base+3 is base+8, which is 2 bytes
+      //beyond the one-past-the-end position base+6.
+      void *const three = m.allocate(3u, 1u);
+      BOOST_TEST(three == base);
+      BOOST_TEST(m.remaining_storage(1u) == 3u);
+
+      //The 8-aligned zero-sized allocation cannot be placed, so it should trigger an allocation.
+      void *const zbeyond = m.allocate(0u, 8u);
+      BOOST_TEST(zbeyond != 0);
+      //No upstream buffer was requested.
+      BOOST_TEST(mrl.m_info.size() == 1u);
+   }
+
+   BOOST_TEST(mrl.m_mismatches == 0u);
+   BOOST_TEST(mrl.m_info.size() == 0u);
+}
+
+void test_do_allocate_overaligned()
+{
+   //Over-aligned requests (alignment > memory_resource::max_align) must be
+   //honored. The buffers obtained from upstream are only max_align-aligned
+   //(memory_resource_logger uses std::malloc), so the resource has to reserve
+   //extra space and realign the returned block inside the freshly obtained
+   //buffer. These tests verify the returned pointer honors the requested
+   //alignment in every code path.
+   const std::size_t max_align = memory_resource::max_align;
+   memory_resource_logger mrl;
+
+   //(1) Over-aligned allocation from a fresh resource must trigger an upstream
+   //    buffer and return a correctly over-aligned, fully usable block.
+   {
+      const std::size_t over  = max_align*4u;
+      const std::size_t bytes = over*3u + 1u;
+      monotonic_buffer_resource m(&mrl);
+      void *const p = m.allocate(bytes, over);
+      BOOST_TEST(p != 0);
+      BOOST_TEST((std::size_t(p) % over) == 0u);
+      //A single upstream buffer was requested for it
+      BOOST_TEST(mrl.m_info.size() == 1u);
+      //The whole block must be usable: writing every byte would trip ASAN or
+      //corrupt the heap if the buffer were too small after realignment.
+      char *const cp = (char*)p;
+      for(std::size_t i = 0; i != bytes; ++i){
+         cp[i] = (char)0xABu;
+      }
+   }
+   BOOST_TEST(mrl.m_mismatches == 0u);
+   BOOST_TEST(mrl.m_info.size() == 0u);
+
+   //(2) A sequence of increasing over-alignments must each be honored.
+   {
+      monotonic_buffer_resource m(&mrl);
+      for(std::size_t a = max_align*2u; a <= max_align*32u; a *= 2u){
+         void *const p = m.allocate(a/2u, a);
+         BOOST_TEST(p != 0);
+         BOOST_TEST((std::size_t(p) % a) == 0u);
+      }
+   }
+   BOOST_TEST(mrl.m_mismatches == 0u);
+   BOOST_TEST(mrl.m_info.size() == 0u);
+
+   //(3) Over-aligned allocation served from a user-supplied buffer (realigned in
+   //    place, no upstream) and then from a fresh buffer after exhaustion.
+   {
+      //256-byte, 64-aligned external buffer
+      boost::move_detail::aligned_storage<256u, 64u>::type storage;
+      const std::size_t over = 64u;
+      monotonic_buffer_resource m(&storage, sizeof(storage), &mrl);
+      char *const base = (char*)&storage;
+      //Misalign the current position by 1 byte
+      void *const one = m.allocate(1u, 1u);
+      BOOST_TEST(one == base);
+      //Over-aligned request must be realigned within the same buffer (no upstream)
+      void *const p = m.allocate(over, over);
+      BOOST_TEST((std::size_t(p) % over) == 0u);
+      BOOST_TEST(p == base + over);
+      BOOST_TEST(mrl.m_info.size() == 0u);
+      //Exhaust the remaining storage
+      void *const ex = m.allocate(m.remaining_storage(1u), 1u);
+      (void)ex;
+      BOOST_TEST(m.remaining_storage(1u) == 0u);
+      //Over-aligned request now must go upstream and still be correctly aligned
+      void *const q = m.allocate(over, over);
+      BOOST_TEST(q != 0);
+      BOOST_TEST((std::size_t(q) % over) == 0u);
+      BOOST_TEST(mrl.m_info.size() == 1u);
+   }
+   BOOST_TEST(mrl.m_mismatches == 0u);
+   BOOST_TEST(mrl.m_info.size() == 0u);
+
+   //(4) A zero-sized over-aligned request is also honored (returns an aligned
+   //    address) following the same rules as any other zero-sized allocation.
+   {
+      boost::move_detail::aligned_storage<128u, 64u>::type storage;
+      const std::size_t over = 64u;
+      monotonic_buffer_resource m(&storage, sizeof(storage), &mrl);
+      char *const base = (char*)&storage;
+      //Misalign, then a zero-sized over-aligned request returns the next aligned
+      //position inside the buffer without consuming real storage nor upstream.
+      void *const one = m.allocate(1u, 1u);
+      BOOST_TEST(one == base);
+      void *const z = m.allocate(0u, over);
+      BOOST_TEST(z == base + over);
+      BOOST_TEST((std::size_t(z) % over) == 0u);
+      BOOST_TEST(mrl.m_info.size() == 0u);
+   }
+   BOOST_TEST(mrl.m_mismatches == 0u);
+   BOOST_TEST(mrl.m_info.size() == 0u);
+}
+
+//Upstream resource that throws bad_alloc for requests bigger than max_bytes
+class limited_memory_resource
+   : public memory_resource_logger
+{
+   public:
+   explicit limited_memory_resource(std::size_t max)
+      : max_bytes(max)
+   {}
+
+   virtual void* do_allocate(std::size_t bytes, std::size_t alignment) BOOST_OVERRIDE
+   {
+      if(bytes > max_bytes)
+         boost::container::throw_bad_alloc();
+      return this->memory_resource_logger::do_allocate(bytes, alignment);
+   }
+
+   std::size_t max_bytes;
+};
+
+void test_do_allocate_overflow_and_upstream_failure()
+{
+   #ifndef BOOST_NO_EXCEPTIONS
+   limited_memory_resource lmr(1024u*1024u);
+   {
+      derived_from_monotonic_buffer_resource dmbr(&lmr);
+      const std::size_t next_size = dmbr.next_buffer_size();
+      //The size plus the realignment space overflows
+      BOOST_TEST_THROWS(dmbr.do_allocate(std::size_t(-1) - 10u, memory_resource::max_align*4u), boost::container::bad_alloc_t);
+      BOOST_TEST_THROWS(dmbr.do_allocate(std::size_t(-1), memory_resource::max_align*2u), boost::container::bad_alloc_t);
+      BOOST_TEST(lmr.m_info.empty());
+      BOOST_TEST(dmbr.next_buffer_size() == next_size);
+      //The upstream resource throws: no effects
+      BOOST_TEST_THROWS(dmbr.do_allocate(std::size_t(1) << 30u, 1u), boost::container::bad_alloc_t);
+      BOOST_TEST(lmr.m_info.empty());
+      BOOST_TEST(dmbr.next_buffer_size() == next_size);
+      BOOST_TEST(dmbr.current_buffer() == 0);
+      //Later small allocations use the normal buffer size
+      void *const p = dmbr.do_allocate(1u, 1u);
+      BOOST_TEST(p != 0);
+      BOOST_TEST(lmr.m_info.size() == 1u);
+      BOOST_TEST(lmr.m_info[0].bytes == next_size + block_slist::header_size);
+   }
+   BOOST_TEST(lmr.m_mismatches == 0u);
+   BOOST_TEST(lmr.m_info.empty());
+   #endif
+}
+
 void test_do_deallocate()
 {
    memory_resource_logger mrl;
@@ -477,6 +765,9 @@ int main()
 
    test_upstream_resource();
    test_do_allocate();
+   test_do_allocate_zero();
+   test_do_allocate_overaligned();
+   test_do_allocate_overflow_and_upstream_failure();
    test_do_deallocate();
    test_do_is_equal();
    test_release();

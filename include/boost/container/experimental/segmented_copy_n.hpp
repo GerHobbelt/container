@@ -20,7 +20,8 @@
 
 #include <boost/container/detail/config_begin.hpp>
 #include <boost/container/detail/workaround.hpp>
-#include <boost/container/experimental/segmented_iterator_traits.hpp>
+#include <boost/container/experimental/detail/segmented_common_algo.hpp>
+#include <cstddef>
 #include <boost/container/detail/std_fwd.hpp>
 #include <boost/container/detail/iterator.hpp>
 
@@ -44,43 +45,49 @@ namespace detail_algo {
 // is optimised away, giving the same code as an unbounded loop.
 //////////////////////////////////////////////////////////////////////////////
 
-template <class SrcIter, class SrcSent, class Size, class DstIter, class DstSent>
+template <class SrcIter, class SrcSent, class DstIter, class DstSent>
 BOOST_CONTAINER_FORCEINLINE segduo<SrcIter, DstIter>
 segmented_copy_n_src_dst_bounded
-   (SrcIter first, SrcSent last, Size& BOOST_RESTRICT count, DstIter dst_first, DstSent dst_last)
+   (SrcIter first, SrcSent last, std::size_t& BOOST_RESTRICT count, DstIter dst_first, DstSent dst_last)
 {
+   std::size_t n = count;
+
    BOOST_CONTAINER_SEGMENTED_UNROLL(4)
-   for(; count > 0; ++first, --count) {
-      if(dst_first == dst_last || first == last)
-         goto out_path;
+   while(n) {
+      if(BOOST_UNLIKELY(dst_first == dst_last || first == last))
+         break;
       *dst_first = *first;
       ++dst_first;
+      ++first;
+      --n;
    }
-   out_path:
+
+   count = n;
    return segduo<SrcIter, DstIter>(first, dst_first);
 }
 
-template <class SrcIter, class SrcSent, class Size, class DstIter, class DstSent>
+#if BOOST_CONTAINER_SEGMENTED_ENABLE_RA_SPECIALIZATIONS
+template <class SrcIter, class SrcSent, class DstIter, class DstSent>
 BOOST_CONTAINER_FORCEINLINE
    typename iterator_disable_if_tag
       <DstIter, std::random_access_iterator_tag, segduo<SrcIter, DstIter> >::type
 segmented_copy_n_dst_bounded
-   (SrcIter first, SrcSent last, Size& BOOST_RESTRICT count, DstIter dst_first, DstSent dst_last, const non_segmented_iterator_tag &)
+   (SrcIter first, SrcSent last, std::size_t& BOOST_RESTRICT count, DstIter dst_first, DstSent dst_last, const non_segmented_iterator_tag &)
 {
    return (segmented_copy_n_src_dst_bounded)(first, last, count, dst_first, dst_last);
 }
 
-template <class RASrcIter, class SrcSent, class Size, class RADstIter>
+template <class RASrcIter, class SrcSent, class RADstIter>
 BOOST_CONTAINER_FORCEINLINE
 typename iterator_enable_if_tag
    <RADstIter, std::random_access_iterator_tag, segduo<RASrcIter, RADstIter> >::type
 segmented_copy_n_dst_bounded
-   (RASrcIter first, SrcSent last, Size& BOOST_RESTRICT count, RADstIter dst_first, RADstIter dst_last, const non_segmented_iterator_tag &)
+   (RASrcIter first, SrcSent last, std::size_t& BOOST_RESTRICT count, RADstIter dst_first, RADstIter dst_last, const non_segmented_iterator_tag &)
 {
-   typedef typename iterator_traits<RADstIter>::difference_type difference_type;
-   const difference_type dst_n = dst_last - dst_first;
-   Size n = count < Size(dst_n) ? count : Size(dst_n);
-   const Size n_initial = n;
+   //count and the segment length are std::size_t (see segmented_copy_n): no truncation
+   const std::size_t dst_n = static_cast<std::size_t>(dst_last - dst_first);
+   std::size_t n = count < dst_n ? count : dst_n;
+   const std::size_t n_initial = n;
    //n is passed by reference and decremented per element copied; the
    //inner helper may exit early if first == last (bounded src), so
    //we must adjust count by the actual number of elements written.
@@ -89,10 +96,19 @@ segmented_copy_n_dst_bounded
    count -= (n_initial - n);
    return r;
 }
+#else
+template <class SrcIter, class SrcSent, class DstIter, class DstSent>
+BOOST_CONTAINER_FORCEINLINE segduo<SrcIter, DstIter>
+segmented_copy_n_dst_bounded
+   (SrcIter first, SrcSent last, std::size_t& BOOST_RESTRICT count, DstIter dst_first, DstSent dst_last, const non_segmented_iterator_tag &)
+{
+   return (segmented_copy_n_src_dst_bounded)(first, last, count, dst_first, dst_last);
+}
+#endif   // BOOST_CONTAINER_SEGMENTED_ENABLE_RA_SPECIALIZATIONS
 
-template <class SrcIter, class SrcSent, class Size, class SegDstIter>
+template <class SrcIter, class SrcSent, class SegDstIter>
 segduo<SrcIter, SegDstIter> segmented_copy_n_dst_bounded
-   (SrcIter first, SrcSent last, Size& BOOST_RESTRICT count, SegDstIter dst_first, SegDstIter dst_last, const segmented_iterator_tag &)
+   (SrcIter first, SrcSent last, std::size_t& BOOST_RESTRICT count, SegDstIter dst_first, SegDstIter dst_last, const segmented_iterator_tag &)
 {
    typedef segmented_iterator_traits<SegDstIter>  dst_traits;
    typedef typename dst_traits::local_iterator    dst_local_iterator;
@@ -102,28 +118,30 @@ segduo<SrcIter, SegDstIter> segmented_copy_n_dst_bounded
    dst_segment_iterator       sdfirst = dst_traits::segment(dst_first);
    const dst_segment_iterator sdlast  = dst_traits::segment(dst_last);
 
-   if(sdfirst == sdlast) {
-      segduo<SrcIter, dst_local_iterator> r = (segmented_copy_n_dst_bounded)
-         (first, last, count, dst_traits::local(dst_first), dst_traits::local(dst_last), dst_is_local_seg_t());
-      return segduo<SrcIter, SegDstIter>(r.first, dst_traits::compose(sdfirst, r.second));
-   }
-   else {
-      segduo<SrcIter, dst_local_iterator> r = (segmented_copy_n_dst_bounded)
-         (first, last, count, dst_traits::local(dst_first), dst_traits::end(sdfirst), dst_is_local_seg_t());
-      first = r.first;
-      if (count != 0 && first != last) {
-         for (++sdfirst; sdfirst != sdlast; ++sdfirst) {
-            r = (segmented_copy_n_dst_bounded)
-               (first, last, count, dst_traits::begin(sdfirst), dst_traits::end(sdfirst), dst_is_local_seg_t());
-            first = r.first;
-            if (count == 0 || first == last)
-               return segduo<SrcIter, SegDstIter>(first, dst_traits::compose(sdfirst, r.second));
-         }
+   dst_local_iterator db = dst_traits::local(dst_first);
 
-         r = (segmented_copy_n_dst_bounded)
-            (first, last, count, dst_traits::begin(sdlast), dst_traits::local(dst_last), dst_is_local_seg_t());
+   for(;;) {
+      const bool last_seg = sdfirst == sdlast;
+      //count is carried by reference, so the shared partial call sees the
+      //remaining count without any extra threading here.
+      const dst_local_iterator de = last_seg ? dst_traits::local(dst_last) : dst_traits::end(sdfirst);
+      {
+         const segduo<SrcIter, dst_local_iterator> r = (segmented_copy_n_dst_bounded)
+            (first, last, count, db, de, dst_is_local_seg_t());
+         first = r.first;
+         if (last_seg || BOOST_UNLIKELY(count == 0 || first == last))
+            return segduo<SrcIter, SegDstIter>(first, dst_traits::compose(sdfirst, r.second));
       }
-      return segduo<SrcIter, SegDstIter>(r.first, dst_traits::compose(sdfirst, r.second));
+
+      for (++sdfirst; sdfirst != sdlast; ++sdfirst) {
+         const segduo<SrcIter, dst_local_iterator> r = (segmented_copy_n_dst_bounded)
+            (first, last, count, dst_traits::begin(sdfirst), dst_traits::end(sdfirst), dst_is_local_seg_t());
+         first = r.first;
+         if (BOOST_UNLIKELY(count == 0 || first == last))
+            return segduo<SrcIter, SegDstIter>(first, dst_traits::compose(sdfirst, r.second));
+      }
+
+      db = dst_traits::begin(sdfirst);
    }
 }
 
@@ -133,24 +151,24 @@ segduo<SrcIter, SegDstIter> segmented_copy_n_dst_bounded
 // Segmented destination: loop over destination segments, bounded per segment.
 //////////////////////////////////////////////////////////////////////////////
 
-template <class SrcIter, class SrcSent, class Size, class DstIter>
+template <class SrcIter, class SrcSent, class DstIter>
 BOOST_CONTAINER_FORCEINLINE DstIter segmented_copy_n_dst_dispatch
-   (SrcIter first, SrcSent last, Size& BOOST_RESTRICT count, DstIter result, const non_segmented_iterator_tag &)
+   (SrcIter first, SrcSent last, std::size_t& BOOST_RESTRICT count, DstIter result, const non_segmented_iterator_tag &)
 {
    return (segmented_copy_n_src_dst_bounded)
       (first, last, count, result, unreachable_sentinel_t()).second;
 }
 
-template <class SrcIter, class SrcSent, class Size, class SegDstIter>
+template <class SrcIter, class SrcSent, class SegDstIter>
 SegDstIter segmented_copy_n_dst_dispatch
-   (SrcIter first, SrcSent last, Size& BOOST_RESTRICT count, SegDstIter result, const segmented_iterator_tag &)
+   (SrcIter first, SrcSent last, std::size_t& BOOST_RESTRICT count, SegDstIter result, const segmented_iterator_tag &)
 {
    typedef segmented_iterator_traits<SegDstIter>  dst_traits;
    typedef typename dst_traits::local_iterator    dst_local_iterator;
    typedef typename dst_traits::segment_iterator  dst_segment_iterator;
    typedef typename segmented_iterator_traits<dst_local_iterator>::is_segmented_iterator dst_is_local_seg_t;
 
-   if(count <= 0)
+   if(BOOST_UNLIKELY(!count))
       return result;
 
    dst_segment_iterator dst_seg   = dst_traits::segment(result);
@@ -164,7 +182,7 @@ SegDstIter segmented_copy_n_dst_dispatch
       //The src-exhaustion check matters when this routine is invoked with
       //a per-segment src range (count typically larger than the range);
       //it returns control to the outer source-segment loop.
-      if(count == 0 || first == last)
+      if(BOOST_UNLIKELY(count == 0 || first == last))
          return dst_traits::compose(dst_seg, r.second);
       ++dst_seg;
       dst_local = dst_traits::begin(dst_seg);
@@ -176,42 +194,35 @@ SegDstIter segmented_copy_n_dst_dispatch
 // boundaries and count, then delegates to the destination dispatch layer.
 //////////////////////////////////////////////////////////////////////////////
 
-template <class InIter, class Size, class OutIter>
+#if BOOST_CONTAINER_SEGMENTED_ENABLE_RA_SPECIALIZATIONS
+template <class InIter, class OutIter>
 BOOST_CONTAINER_FORCEINLINE
 OutIter copy_n_scan
-   ( InIter first, InIter last, Size& BOOST_RESTRICT count
+   ( InIter first, InIter last, std::size_t& BOOST_RESTRICT count
    , OutIter result, non_segmented_iterator_tag, const std::random_access_iterator_tag &)
 {
-   const Size range_sz = Size(last - first);
-   Size min_count = count <= range_sz ? count : range_sz;
+   //count and the segment length are std::size_t (see segmented_copy_n): no truncation
+   const std::size_t range_sz = static_cast<std::size_t>(last - first);
+   std::size_t min_count = count <= range_sz ? count : range_sz;
    count -= min_count;
-   #if !defined(BOOST_CONTAINER_DISABLE_MULTI_SEGMENTED_ALGO)
-      typedef segmented_iterator_traits<OutIter> dst_traits;
-      return (segmented_copy_n_dst_dispatch)
-         (first, unreachable_sentinel_t(), min_count, result, typename dst_traits::is_segmented_iterator());
-   #else
-      return (segmented_copy_n_src_dst_bounded)
-         (first, unreachable_sentinel_t(), min_count, result, unreachable_sentinel_t()).second;
-   #endif
+   typedef segmented_iterator_traits<OutIter> dst_traits;
+   return (segmented_copy_n_dst_dispatch)
+      (first, unreachable_sentinel_t(), min_count, result, typename dst_traits::is_segmented_iterator());
 }
+#endif   // BOOST_CONTAINER_SEGMENTED_ENABLE_RA_SPECIALIZATIONS
 
-template <class InIter, class Size, class OutIter, class Cat>
+template <class InIter, class OutIter, class Cat>
 BOOST_CONTAINER_FORCEINLINE
 OutIter copy_n_scan
-   (InIter first, InIter last, Size& BOOST_RESTRICT count, OutIter result, non_segmented_iterator_tag, const Cat &)
+   (InIter first, InIter last, std::size_t& BOOST_RESTRICT count, OutIter result, non_segmented_iterator_tag, const Cat &)
 {
-   #if !defined(BOOST_CONTAINER_DISABLE_MULTI_SEGMENTED_ALGO)
-      typedef segmented_iterator_traits<OutIter> dst_traits;
-      return (segmented_copy_n_dst_dispatch)
-         (first, last, count, result, typename dst_traits::is_segmented_iterator());
-   #else
-      return (segmented_copy_n_dst_dispatch)
-         (first, last, count, result, non_segmented_iterator_tag());
-   #endif
+   typedef segmented_iterator_traits<OutIter> dst_traits;
+   return (segmented_copy_n_dst_dispatch)
+      (first, last, count, result, typename dst_traits::is_segmented_iterator());
 }
 
-template <class SegIt, class Size, class OutIter, class Cat>
-OutIter copy_n_scan(SegIt first, SegIt last, Size& BOOST_RESTRICT count, OutIter result, segmented_iterator_tag, const Cat &)
+template <class SegIt, class OutIter, class Cat>
+OutIter copy_n_scan(SegIt first, SegIt last, std::size_t& BOOST_RESTRICT count, OutIter result, segmented_iterator_tag, const Cat &)
 {
    typedef segmented_iterator_traits<SegIt>                                            traits;
    typedef typename traits::local_iterator                                             local_iterator;
@@ -223,22 +234,24 @@ OutIter copy_n_scan(SegIt first, SegIt last, Size& BOOST_RESTRICT count, OutIter
    segment_iterator slast = traits::segment(last);
    local_iterator   lcur  = traits::local(first);
 
-   if(scur == slast) {
-      return copy_n_scan(lcur, traits::local(last), count, result, is_local_seg_t(), local_cat_t());
-   }
-   else {
-      result = copy_n_scan(lcur, traits::end(scur), count, result, is_local_seg_t(), local_cat_t());
+   for(;;) {
+      //Partial segments (first and last) share this call site
+      const bool last_seg = scur == slast;
+      const local_iterator le = last_seg ? traits::local(last) : traits::end(scur);
+      result = copy_n_scan(lcur, le, count, result, is_local_seg_t(), local_cat_t());
 
-      if (!count)
+      if (last_seg || BOOST_UNLIKELY(!count))
          return result;
 
+      //Middle segments keep their own call site: begin/end both come from
+      //scur, so the leaf can be specialised for full segments
       for (++scur; scur != slast; ++scur) {
          result = copy_n_scan(traits::begin(scur), traits::end(scur), count, result, is_local_seg_t(), local_cat_t());
-         if (!count)
+         if (BOOST_UNLIKELY(!count))
             return result;
       }
 
-      return copy_n_scan(traits::begin(scur), traits::local(last), count, result, is_local_seg_t(), local_cat_t());
+      lcur = traits::begin(scur);
    }
 }
 
@@ -246,9 +259,9 @@ OutIter copy_n_scan(SegIt first, SegIt last, Size& BOOST_RESTRICT count, OutIter
 // Source dispatch: walks the source (read pointer) segments
 //////////////////////////////////////////////////////////////////////////////
 
-template <class SegIter, class Size, class OutIter, class Cat>
+template <class SegIter, class OutIter, class Cat>
 OutIter segmented_copy_n_dispatch
-   (SegIter first, Size count, OutIter result, const segmented_iterator_tag &, Cat)
+   (SegIter first, std::size_t count, OutIter result, const segmented_iterator_tag &, Cat)
 {
    typedef segmented_iterator_traits<SegIter> traits;
    typedef typename traits::local_iterator   local_iterator;
@@ -256,7 +269,7 @@ OutIter segmented_copy_n_dispatch
    typedef typename segmented_iterator_traits<local_iterator>::is_segmented_iterator is_local_seg_t;
    typedef typename iterator_traits<local_iterator>::iterator_category local_cat_t;
 
-   if(count <= 0) return result;
+   if(BOOST_UNLIKELY(!count)) return result;
 
    segment_iterator scur = traits::segment(first);
    local_iterator   lcur = traits::local(first);
@@ -264,7 +277,7 @@ OutIter segmented_copy_n_dispatch
    while(1) {
       result = copy_n_scan(lcur, traits::end(scur), count, result, is_local_seg_t(), local_cat_t());
 
-      if(count == 0)
+      if(BOOST_UNLIKELY(count == 0))
          break;
       ++scur;
       lcur = traits::begin(scur);
@@ -272,31 +285,31 @@ OutIter segmented_copy_n_dispatch
    return result;
 }
 
-template <class InIter, class Size, class OutIter, class Cat>
+template <class InIter, class OutIter, class Cat>
 BOOST_CONTAINER_FORCEINLINE OutIter segmented_copy_n_dispatch
-   (InIter first, Size count, OutIter result, const non_segmented_iterator_tag &, const Cat&)
+   (InIter first, std::size_t count, OutIter result, const non_segmented_iterator_tag &, const Cat&)
 {
-#if !defined(BOOST_CONTAINER_DISABLE_MULTI_SEGMENTED_ALGO)
    typedef segmented_iterator_traits<OutIter> dst_traits;
    return (segmented_copy_n_dst_dispatch)
       (first, unreachable_sentinel_t(), count, result, typename dst_traits::is_segmented_iterator());
-#else
-   return (segmented_copy_n_src_dst_bounded)
-      (first, unreachable_sentinel_t(), count, result, unreachable_sentinel_t()).second;
-#endif
 }
 
 } // namespace detail_algo
 
 //! Copies \c count elements from the range beginning at \c first to
-//! the range beginning at \c result. Exploits segmentation on both
+//! the range beginning at \c result. If \c count is not positive, does
+//! nothing and returns \c result. Exploits segmentation on both
 //! input and output.
 template <class InIter, class Size, class OutIter>
 BOOST_CONTAINER_FORCEINLINE
 OutIter segmented_copy_n(InIter first, Size count, OutIter result)
 {
    typedef segmented_iterator_traits<InIter> traits;
-   return detail_algo::segmented_copy_n_dispatch(first, count, result,
+   if (BOOST_UNLIKELY(!(count > 0)))
+      return result;
+   //A valid count is not bigger than the range, so it fits in std::size_t. The internal
+   //functions use only std::size_t: a segment length converted to a narrower Size is truncated.
+   return detail_algo::segmented_copy_n_dispatch(first, static_cast<std::size_t>(count), result,
       typename traits::is_segmented_iterator(), typename iterator_traits<InIter>::iterator_category());
 }
 

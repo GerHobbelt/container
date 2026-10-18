@@ -36,6 +36,7 @@
 #include <boost/container/new_allocator.hpp>        //default allocator when Allocator = void
 #include <boost/container/throw_exception.hpp>
 #include <boost/container/detail/addressof.hpp>     //dtl::addressof (avoids <memory>)
+#include <boost/container/detail/destroyers.hpp>    //dtl::scoped_array_deallocator
 #include <boost/container/detail/aligned_allocation.hpp> //portable (over)aligned nothrow alloc
 #include <boost/container/detail/std_fwd.hpp>       //forward declares std::allocator
 #include <boost/intrusive/pointer_traits.hpp>
@@ -111,13 +112,14 @@ template<typename ValuePointer> class iterator;
 }
 
 template<typename T, typename Allocator, typename F>
-F for_each(hub<T, Allocator>&, F);
+BOOST_CONTAINER_FORCEINLINE F for_each(hub<T, Allocator>&, F);
 
 template<typename T, typename Allocator, typename F>
 std::pair<typename hub<T, Allocator>::iterator, F> for_each_while(
    hub<T, Allocator>&, F);
 
 template<typename T, typename Allocator, typename F>
+BOOST_CONTAINER_FORCEINLINE
 std::pair<typename hub<T, Allocator>::const_iterator, F> for_each_while(
    const hub<T, Allocator>&, F);
 
@@ -373,7 +375,7 @@ public:
    using iterator_category = std::bidirectional_iterator_tag;
 
    BOOST_CONTAINER_FORCEINLINE iterator() = default;
-   BOOST_CONTAINER_FORCEINLINE iterator(const iterator& x) noexcept: pbb{x.pbb}, n{x.n} {}
+   //Implicit copy operations: keeps the iterator trivially copyable (passed in registers)
 
    template<
       typename Value2Pointer,
@@ -381,13 +383,6 @@ public:
    >
    BOOST_CONTAINER_FORCEINLINE iterator(const iterator<Value2Pointer>& x) noexcept: 
       pbb{x.pbb}, n{x.n} {}
-
-   BOOST_CONTAINER_FORCEINLINE iterator& operator=(const iterator& x) noexcept
-   {
-      pbb = x.pbb;
-      n = x.n;
-      return *this;
-   }
 
    template<
       typename Value2Pointer,
@@ -921,7 +916,8 @@ struct block_typedefs
 //!
 //! \tparam T The cv-unqualified object type of the elements stored in the hub.
 //! \tparam Allocator An allocator whose value type is \c T. If \c void (the
-//!   default), \c boost::container::new_allocator<T> is used.
+//!   default), \c boost::container::new_allocator<T> is used. An allocator
+//!   whose \c value_type is \c void is rebound to \c T.
 //!
 //! <b>Exception safety</b>: Except when explicitly noted, all non-const member
 //!   functions (and free functions taking \c hub by non-const reference) provide
@@ -937,7 +933,8 @@ class hub
 #endif
 {
    public:
-   //! new_allocator<T> is if Allocator is void, an alias for Allocator otherwise.
+   //! \c new_allocator<T> if Allocator is void, the allocator rebound to \c T
+   //! if Allocator's \c value_type is \c void, otherwise an alias for Allocator.
    typedef BOOST_CONTAINER_IMPDEF
       (typename real_allocator<T BOOST_MOVE_I AllocatorOrVoid>::type)     allocator_type;
 
@@ -969,7 +966,7 @@ public:
    //! <b>Requires</b>: \c allocator_type is DefaultConstructible.
    //!
    //! <b>Complexity</b>: Constant.
-   hub() noexcept(noexcept(allocator_type())): hub{allocator_type()} {}
+   hub() noexcept(noexcept(allocator_type())): hub(allocator_type()) {}
 
    //! <b>Effects</b>: Constructs an empty hub, using the specified allocator.
    //!
@@ -983,7 +980,7 @@ public:
    //! <b>Requires</b>: T is DefaultInsertable into the hub.
    //!
    //! <b>Complexity</b>: Linear in n.
-   explicit hub(size_type n, const allocator_type& al_ = allocator_type()): hub{al_}
+   explicit hub(size_type n, const allocator_type& al_ = allocator_type()): hub(al_)
    {
       range_insert_impl(size_type(0), n, [&, this] (T* p, size_type) {
          block_alloc_traits::construct(al(), p);
@@ -996,7 +993,7 @@ public:
    //! <b>Requires</b>: T is CopyInsertable into the hub.
    //!
    //! <b>Complexity</b>: Linear in n.
-   hub(size_type n, const T& x, const allocator_type& al_ = allocator_type()): hub{al_}
+   hub(size_type n, const T& x, const allocator_type& al_ = allocator_type()): hub(al_)
    {
       insert(n, x);
    }
@@ -1011,7 +1008,7 @@ public:
       >
    hub(
       InputIterator first, InputIterator last,
-      const allocator_type& al_ = allocator_type()): hub{al_}
+      const allocator_type& al_ = allocator_type()): hub(al_)
    {
       insert(first, last);
    }
@@ -1022,7 +1019,7 @@ public:
    //!
    //! <b>Complexity</b>: Linear in std::ranges::distance(rg).
    template< BOOST_CONTAINER_DOC1ST(std::ranges::input_range<T>, hub_detail::container_compatible_range<T>) R >
-   hub(from_range_t, R&& rg, const allocator_type& al_ = allocator_type()): hub{al_}
+   hub(from_range_t, R&& rg, const allocator_type& al_ = allocator_type()): hub(al_)
    {
       insert_range(std::forward<R>(rg));
    }
@@ -1035,7 +1032,7 @@ public:
    //!
    //! <b>Complexity</b>: Linear in x.size().
    hub(const hub& x):
-      hub{x, block_alloc_traits::select_on_container_copy_construction(x.al())} {}
+      hub(x, block_alloc_traits::select_on_container_copy_construction(x.al())) {}
 
    //! <b>Effects</b>: Constructs a hub equal to x, using the given allocator.
    //!
@@ -1054,7 +1051,7 @@ public:
    //!
    //! <b>Complexity</b>: Constant.
    hub(hub&& x) noexcept:
-      hub{std::move(x), allocator_type(std::move(x.al())), std::true_type{}} {}
+      hub(std::move(x), allocator_type(std::move(x.al())), std::true_type{}) {}
 
    //! <b>Effects</b>: allocator_type-extended move constructor. If alloc equals
    //!   x.get_allocator() the element blocks are moved (iterators/pointers to x
@@ -1065,19 +1062,24 @@ public:
    //!
    //! <b>Postcondition</b>: x.empty() is true.
    //!
+   //! <b>Throws</b>: Nothing if allocator_traits<allocator_type>::is_always_equal::value is true.
+   //!   Otherwise, if allocation or T's move constructor throws.
+   //!
    //! <b>Complexity</b>: Constant, or linear in x.size() if elements are moved
    //!   one by one.
    hub( hub&& x
-      , const BOOST_CONTAINER_DOC1ST(allocator_type, dtl::type_identity_t<allocator_type>) &al_):
-      hub{std::move(x), al_, hub_detail::is_always_equal_t<allocator_type>{}} {}
+      , const BOOST_CONTAINER_DOC1ST(allocator_type, dtl::type_identity_t<allocator_type>) &al_)
+      noexcept(hub_detail::is_always_equal_t<allocator_type>::value):
+      hub(std::move(x), al_, hub_detail::is_always_equal_t<allocator_type>{}) {}
 
    //! <b>Effects</b>: Constructs a hub equal to il, using the specified allocator.
    //!
    //! <b>Requires</b>: T is CopyInsertable into the hub.
    //!
    //! <b>Complexity</b>: Linear in il.size().
-   hub(std::initializer_list<T> il, const allocator_type& al_ = allocator_type()):
-      hub{il.begin(), il.end(), al_} {}
+   hub(std::initializer_list<T> il
+      , const BOOST_CONTAINER_DOC1ST(allocator_type, dtl::type_identity_t<allocator_type>) &al_ = allocator_type()):
+      hub(il.begin(), il.end(), al_) {}
 
    //! <b>Effects</b>: Destroys all elements and deallocates all blocks.
    //!
@@ -1319,13 +1321,15 @@ public:
    }
 
    //! <b>Effects</b>: Inserts an object of type T constructed with
-   //!   std::forward<Args>(args)... at a position chosen by the container. If an
-   //!   exception is thrown there are no effects. args may directly or indirectly
-   //!   refer to a value in *this.
+   //!   std::forward<Args>(args)... at a position chosen by the container. args
+   //!   may directly or indirectly refer to a value in *this.
    //!
    //! <b>Requires</b>: T is EmplaceConstructible into the hub from args.
    //!
    //! <b>Returns</b>: An iterator pointing to the new element.
+   //!
+   //! <b>Throws</b>: If memory allocation or the construction of the element throws.
+   //!   If an exception is thrown, there are no effects.
    //!
    //! <b>Complexity</b>: Constant. Exactly one object of type T is constructed.
    template<typename... Args>
@@ -1354,6 +1358,9 @@ public:
    //!
    //! <b>Returns</b>: An iterator pointing to the new element.
    //!
+   //! <b>Throws</b>: If memory allocation or the construction of the element throws.
+   //!   If an exception is thrown, there are no effects.
+   //!
    //! <b>Complexity</b>: Constant.
    template<typename... Args>
    BOOST_CONTAINER_FORCEINLINE iterator emplace_hint(const_iterator, Args&&... args)
@@ -1366,6 +1373,9 @@ public:
    //!   emplace(std::forward<decltype(x)>(x)).
    //!
    //! <b>Returns</b>: An iterator pointing to the new element.
+   //!
+   //! <b>Throws</b>: If memory allocation or the construction of the element throws.
+   //!   If an exception is thrown, there are no effects.
    //!
    //! <b>Complexity</b>: Constant.
    BOOST_CONTAINER_FORCEINLINE iterator insert(const T& x) { return emplace(x); }
@@ -1725,7 +1735,7 @@ private:
 
    hub(
       hub&& x, const allocator_type& al_, std::false_type /* maybe unequal allocs */):
-      hub{al_}
+      hub(al_)
    {
       if(al() == x.al()) {
          blist = std::move(x.blist);
@@ -1782,15 +1792,12 @@ private:
    {
       auto pb = block_alloc_traits::allocate(al(), 1);
       pb->mask = 0;
-      BOOST_CONTAINER_TRY {
+      {
+         dtl::scoped_array_deallocator<block_allocator> guard(pb, al(), 1u);
          value_allocator val(al());
          pb->data_ = value_alloc_traits::allocate(val, N);
+         guard.release();
       }
-      BOOST_CONTAINER_CATCH(...) {
-         block_alloc_traits::deallocate(al(), pb, 1);
-         BOOST_CONTAINER_RETHROW;
-      }
-      BOOST_CONTAINER_CATCH_END
       blist.link_available_at_back(pb);
       ++num_blocks;
       return pb;
@@ -1890,18 +1897,24 @@ private:
       size_ = 0;
    }
 
+   //Calls restore_capacity_on_throw if the construction throws. A guard
+   //instead of try/catch lets compilers like MSVC inline the callers.
+   struct restore_capacity_guard
+   {
+      ~restore_capacity_guard()
+      {  if(x) x->restore_capacity_on_throw(pbb);  }
+
+      hub* x;
+      block_base_pointer pbb;
+   };
+
    template<typename... Args>
    inline void construct_or_restore_capacity(
       value_type* p, block_base_pointer pbb, Args&&... args)
    {
-      BOOST_CONTAINER_TRY {
-         block_alloc_traits::construct(al(), p, std::forward<Args>(args)...);
-      }
-      BOOST_CONTAINER_CATCH(...) {
-         restore_capacity_on_throw(pbb);
-         BOOST_CONTAINER_RETHROW
-      }
-      BOOST_CONTAINER_CATCH_END
+      restore_capacity_guard guard{this, pbb};
+      block_alloc_traits::construct(al(), p, std::forward<Args>(args)...);
+      guard.x = nullptr;
    }
 
    BOOST_NOINLINE void restore_capacity_on_throw(
@@ -1936,10 +1949,14 @@ private:
       while(first != last) {
          int  n;
          auto pb = retrieve_available_block(n);
+         if(pb->mask == 0) {
+            //blocks used are empty from this point on (reserved or newly allocated)
+            range_insert_adjacent(first, last, construct_, pb);
+            return;
+         }
          for(; ; ) {
             construct_(boost::movelib::to_raw_pointer(pb->data() + n), first++);
             ++size_;
-            if(BOOST_UNLIKELY(pb->mask == 0)) blist.link_at_back(pb);
             pb->mask |= pb->mask +1;
             if(pb->mask == full) {
                blist.unlink_available(pb);
@@ -1948,6 +1965,46 @@ private:
             else if(first == last) return;
             n = dtl::unchecked_countr_one(pb->mask);
          }
+      }
+   }
+
+   template<typename Incrementable, typename Sentinel, typename Construct>
+   void range_insert_adjacent(
+      Incrementable& first, Sentinel last, Construct construct_, block_pointer pb)
+   {
+      for(;;) {
+         BOOST_ASSERT(pb->mask == 0);
+         T* p = boost::movelib::to_raw_pointer(pb->data());
+         int i = 0;
+         BOOST_CONTAINER_TRY {
+            for(;;) {
+               construct_(p + i, first++);
+               if(++i == N || first == last) break;
+            }
+         }
+         BOOST_CONTAINER_CATCH(...) {
+            if(i != 0) {
+               blist.link_at_back(pb);
+               size_ += (size_type)i;
+               pb->mask = (mask_type(1) << i) - 1;
+            }
+            BOOST_CONTAINER_RETHROW;
+         }
+         BOOST_CONTAINER_CATCH_END
+
+         blist.link_at_back(pb);
+         size_ += (size_type)i;
+         if(i == N) {
+            pb->mask = full;
+            blist.unlink_available(pb);
+         }
+         else {
+            pb->mask = (mask_type(1) << i) - 1;
+            return;
+         }
+         if(first == last) return;
+         int n;
+         pb = retrieve_available_block(n);
       }
    }
 
@@ -1999,14 +2056,22 @@ private:
          hub_detail::buffer<T,allocator_type> buf(size_, al());
          if(!buf.data) return false;
 
-         container::for_each(*this, [&] (value_type& x) {
-            buf.emplace_back(std::move(x));
-         });
-         std::sort(buf.begin(), buf.end(), comp);
-         container::for_each(*this, [&] (value_type& x) { 
-            x = std::move(*buf.begin());
-            buf.erase_front();
-         });
+         BOOST_CONTAINER_TRY {
+            container::for_each(*this, [&] (value_type& x) {
+               buf.emplace_back(std::move(x));
+            });
+            std::sort(buf.begin(), buf.end(), comp);
+            container::for_each(*this, [&] (value_type& x) {
+               x = std::move(*buf.begin());
+               buf.erase_front();
+            });
+         }
+         BOOST_CONTAINER_CATCH(...) {
+            //The values are in the buffer: the elements are moved-from
+            clear();
+            BOOST_CONTAINER_RETHROW
+         }
+         BOOST_CONTAINER_CATCH_END
       }
       return true;
    }
@@ -2278,7 +2343,7 @@ BOOST_CONTAINER_FORCEINLINE F for_each
 //! <b>Note</b>: Potentially faster than range iteration thanks to internal
 //!   unrolling and prefetching.
 template<typename T, typename Allocator, typename F>
-BOOST_CONTAINER_FORCEINLINE F for_each(hub<T, Allocator>& x, F f)
+F for_each(hub<T, Allocator>& x, F f)
 {
    container::for_each_while(
       x, hub_detail::inline_return_true_ref_caller<F>{f});
@@ -2403,7 +2468,7 @@ for_each_while(hub<T, Allocator>& x, F f)
 //!   unrolling and prefetching.
 template<typename T, typename Allocator, typename F>
 std::pair<typename hub<T, Allocator>::const_iterator, F>
-BOOST_CONTAINER_FORCEINLINE for_each_while(const hub<T, Allocator>& x, F f)
+for_each_while(const hub<T, Allocator>& x, F f)
 {
    return {
       container::for_each_while(

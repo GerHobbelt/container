@@ -12,56 +12,66 @@
 #include <boost/container/allocator.hpp>
 #include <boost/container/vector.hpp>
 #include <boost/container/list.hpp>
+#include "extended_allocator_test.hpp"
+#include "movable_int.hpp"
 
 using namespace boost::container;
+
+//What one block costs the heap: the bytes the caller may use, plus the fixed
+//overhead every block carries. Both are published by the class, so no walk of
+//the heap is needed to ask. Right for a block that lives in a segment, which
+//is every block here; one big enough for the heap to map on its own carries a
+//different overhead.
+inline dlmalloc::size_type block_cost(const void *p)
+{  return dlmalloc::usable_size(p) + dlmalloc::allocation_payload;  }
 
 bool basic_test()
 {
    size_t received = 0;
-   if(!dlmalloc_all_deallocated())
+   if(!dlmalloc_heap().all_deallocated())
       return false;
-   void *ptr = dlmalloc_alloc(50, 98, &received);
-   if(dlmalloc_size(ptr) != received)
+   void *ptr = dlmalloc_heap().alloc(50, 98, &received);
+   if(dlmalloc::usable_size(ptr) != received)
       return false;
-   if(dlmalloc_allocated_memory() != dlmalloc_chunksize(ptr))
-      return false;
-
-   if(dlmalloc_all_deallocated())
+   if(dlmalloc_heap().allocated_memory() != block_cost(ptr))
       return false;
 
-   dlmalloc_grow(ptr, received + 20, received + 30, &received);
-
-   if(dlmalloc_allocated_memory() != dlmalloc_chunksize(ptr))
+   if(dlmalloc_heap().all_deallocated())
       return false;
 
-   if(dlmalloc_size(ptr) != received)
+   dlmalloc_heap().grow(ptr, received + 20, received + 30, &received);
+
+   if(dlmalloc_heap().allocated_memory() != block_cost(ptr))
       return false;
 
-   if(!dlmalloc_shrink(ptr, 100, 140, &received, 1))
+   if(dlmalloc::usable_size(ptr) != received)
       return false;
 
-   if(dlmalloc_allocated_memory() != dlmalloc_chunksize(ptr))
+   if(!dlmalloc_heap().shrink(ptr, 100, 140, &received, 1))
       return false;
 
-   if(!dlmalloc_shrink(ptr, 0, 140, &received, 1))
+   if(dlmalloc_heap().allocated_memory() != block_cost(ptr))
       return false;
 
-   if(dlmalloc_allocated_memory() != dlmalloc_chunksize(ptr))
+   if(!dlmalloc_heap().shrink(ptr, 0, 140, &received, 1))
       return false;
 
-   if(dlmalloc_shrink(ptr, 0, received/2, &received, 1))
+   if(dlmalloc_heap().allocated_memory() != block_cost(ptr))
       return false;
 
-   if(dlmalloc_allocated_memory() != dlmalloc_chunksize(ptr))
+   if(dlmalloc_heap().shrink(ptr, 0, received/2, &received, 1))
       return false;
 
-   if(dlmalloc_size(ptr) != received)
+   if(dlmalloc_heap().allocated_memory() != block_cost(ptr))
       return false;
 
-   dlmalloc_free(ptr);
+   if(dlmalloc::usable_size(ptr) != received)
+      return false;
 
-   dlmalloc_malloc_check();
-   if(!dlmalloc_all_deallocated())
+   dlmalloc_heap().deallocate(ptr);
+
+   dlmalloc_heap().check();
+   if(!dlmalloc_heap().all_deallocated())
       return false;
    return true;
 }
@@ -69,7 +79,7 @@ bool basic_test()
 bool vector_test()
 {
    typedef boost::container::vector<int, allocator<int> > Vector;
-   if(!dlmalloc_all_deallocated())
+   if(!dlmalloc_heap().all_deallocated())
       return false;
    {
       const int NumElem = 1000;
@@ -86,7 +96,7 @@ bool vector_test()
          new_buf = &v[0];
       }
    }
-   if(!dlmalloc_all_deallocated())
+   if(!dlmalloc_heap().all_deallocated())
       return false;
    return true;
 }
@@ -94,7 +104,7 @@ bool vector_test()
 bool list_test()
 {
    typedef boost::container::list<int, allocator<int> > List;
-   if(!dlmalloc_all_deallocated())
+   if(!dlmalloc_heap().all_deallocated())
       return false;
    {
       const int NumElem = 1000;
@@ -102,7 +112,7 @@ bool list_test()
       int values[NumElem];
       l.insert(l.end(), &values[0], &values[NumElem]);
    }
-   if(!dlmalloc_all_deallocated())
+   if(!dlmalloc_heap().all_deallocated())
       return false;
    return true;
 }
@@ -115,5 +125,16 @@ int main()
       return 1;
    if(!list_test())
       return 1;
+   //The Version 2 chain interface: containers reach it only for some
+   //sizes, so exercise it directly.
+   if(boost::container::test::extended_allocator_test< allocator<int, 2> >("allocator<int>"))
+      return 1;
+   if(boost::container::test::extended_allocator_test< allocator<double, 2> >("allocator<double>"))
+      return 1;
+   //Over-aligned type (bigger than the dlmalloc alignment)
+   if(boost::container::test::extended_allocator_test
+         < allocator<boost::container::test::overaligned_copyable_int, 2> >("allocator<overaligned>"))
+      return 1;
+
    return 0;
 }

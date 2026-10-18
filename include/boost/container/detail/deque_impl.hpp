@@ -42,18 +42,12 @@
 
 // move
 #include <boost/move/adl_move_swap.hpp>
-#include <boost/move/algo/detail/merge.hpp>
+#include <boost/move/algo/detail/reverse.hpp>
+#include <boost/move/algo/detail/rotate.hpp>
 #include <boost/move/iterator.hpp>
 #include <boost/move/traits.hpp>
 #include <boost/move/utility_core.hpp>
 
-
-// move
-#include <boost/move/adl_move_swap.hpp>
-#include <boost/move/algo/detail/merge.hpp>
-#include <boost/move/iterator.hpp>
-#include <boost/move/traits.hpp>
-#include <boost/move/utility_core.hpp>
 // move/detail
 #if defined(BOOST_NO_CXX11_VARIADIC_TEMPLATES)
 #  include <boost/move/detail/fwd_macros.hpp>
@@ -199,16 +193,10 @@ class deque_iterator
       : m_cur(), m_node()  //Value initialization to achieve "null iterators" (N3644)
    {}
 
-   inline deque_iterator(const deque_iterator& x) BOOST_NOEXCEPT_OR_NOTHROW
-      : m_cur(x.get_cur()), m_node(x.get_node())
-   {}
-
+   //Implicit copy operations: keeps the iterator trivially copyable (passed in registers)
    inline deque_iterator(const nonconst_iterator_arg& x) BOOST_NOEXCEPT_OR_NOTHROW
       : m_cur(x.get_cur()), m_node(x.get_node())
    {}
-
-   inline deque_iterator& operator=(const deque_iterator& x) BOOST_NOEXCEPT_OR_NOTHROW
-   {  m_cur = x.get_cur(); m_node = x.get_node(); return *this; }
 
    inline deque_iterator& operator=(const nonconst_iterator_arg& x) BOOST_NOEXCEPT_OR_NOTHROW
    {  m_cur = x.get_cur(); m_node = x.get_node(); return *this; }
@@ -237,12 +225,15 @@ class deque_iterator
    deque_iterator& operator++() BOOST_NOEXCEPT_OR_NOTHROW
    {
       BOOST_ASSERT(!!m_cur);
-      ++this->m_cur;
-      const Pointer last = *m_node + get_block_ssize();
+      const Pointer last = *m_node + (get_block_ssize() - 1);
       if (BOOST_UNLIKELY(this->m_cur == last)) {
          ++this->m_node;
          this->m_cur = *this->m_node;
       }
+      else {
+         ++this->m_cur;
+      }
+
       return *this;
    }
 
@@ -591,6 +582,8 @@ class deque_base
 
    protected:
    typedef typename options_type::stored_size_type                stored_size_type;
+   BOOST_CONTAINER_STATIC_ASSERT_MSG( (stored_size_type(-1) > stored_size_type(0))
+                                    , "stored_size must be an unsigned integer type");
    typedef deque_iterator< val_alloc_ptr, false
                          , options_type::block_bytes
                          , options_type::block_size
@@ -672,10 +665,16 @@ class deque_base
       this->members_.swap(x.members_);
    }
 
+   //The allocator limit, clamped to the biggest value of stored_size_type
+   size_type prot_max_size() const BOOST_NOEXCEPT_OR_NOTHROW
+   {
+      return dtl::limit_by_stored_size_type<size_type, stored_size_type>::clamp
+         (val_alloc_traits_type::max_size(this->alloc()));
+   }
+
    void test_size_against_max(size_type n)
    {
-      const size_type max_alloc = val_alloc_traits_type::max_size(this->alloc());
-      const size_type max = dtl::limit_by_stored_size_type<size_type, stored_size_type>::clamp(max_alloc);;
+      const size_type max = this->prot_max_size();
       if (BOOST_UNLIKELY(max < n) )
          boost::container::throw_length_error("get_next_capacity, allocator's max size reached");
    }
@@ -1417,6 +1416,7 @@ class deque_impl : protected deque_base<typename real_allocator<T, Allocator>::t
    }
 
    deque_impl(BOOST_RV_REF(deque_impl) x, const BOOST_CONTAINER_DOC1ST(allocator_type, typename dtl::type_identity<allocator_type>::type) &a)
+      BOOST_NOEXCEPT_IF(allocator_traits_type::is_always_equal::value)
       :  Base(a)
    {
       if(x.alloc() == a){
@@ -1518,7 +1518,7 @@ class deque_impl : protected deque_base<typename real_allocator<T, Allocator>::t
       typedef typename iter_size<FwdIt>::type it_size_type;
       const it_size_type sz = boost::container::iterator_udistance(first, last);
       if (BOOST_UNLIKELY(sz > size_type(-1))){
-         boost::container::throw_length_error("vector::insert, FwdIt's max length reached");
+         boost::container::throw_length_error("deque::insert, FwdIt's max length reached");
       }
       const size_type n = static_cast<size_type>(sz);
       dtl::insert_range_proxy<ValAllocator, FwdIt> proxy(first);
@@ -1642,7 +1642,7 @@ class deque_impl : protected deque_base<typename real_allocator<T, Allocator>::t
 
    BOOST_CONTAINER_NODISCARD inline
       size_type max_size() const BOOST_NOEXCEPT_OR_NOTHROW
-      { return allocator_traits_type::max_size(this->alloc()); }
+      { return this->prot_max_size(); }
 
    void resize(size_type new_size)
    {
@@ -1954,14 +1954,46 @@ class deque_impl : protected deque_base<typename real_allocator<T, Allocator>::t
       )
    {
       BOOST_ASSERT(this->priv_in_range_or_end(pos));
-      size_type n = 0;
-      iterator it(pos.unconst());
-      for(;first != last; ++first, ++n){
-         it = this->emplace(it, *first);
-         ++it;
+      const size_type old_size = this->size();
+      const size_type n_pos = size_type(pos - this->cbegin());
+      //Insert the new elements at the nearest end and rotate them to pos
+      BOOST_IF_CONSTEXPR(!is_single_ended){
+         if (n_pos < size_type(old_size - n_pos)) {
+            BOOST_CONTAINER_TRY{
+               for ( ; first != last; ++first) {
+                  this->emplace_front(*first);
+               }
+            }
+            BOOST_CONTAINER_CATCH(...){
+               //No effects: erase the new elements
+               while (this->size() > old_size) {
+                  this->pop_front();
+               }
+               BOOST_CONTAINER_RETHROW
+            }
+            BOOST_CONTAINER_CATCH_END
+            //The new elements are at the front, in reverse order
+            const difference_type n = difference_type(this->size() - old_size);
+            boost::movelib::reverse(this->begin(), this->begin() + n);
+            boost::movelib::rotate_gcd(this->begin(), this->begin() + n, this->begin() + (n + difference_type(n_pos)));
+            return this->begin() + difference_type(n_pos);
+         }
       }
-      it -= difference_type(n);
-      return it;
+      BOOST_CONTAINER_TRY{
+         for ( ; first != last; ++first) {
+            this->emplace_back(*first);
+         }
+      }
+      BOOST_CONTAINER_CATCH(...){
+         while (this->size() > old_size) {
+            this->pop_back();
+         }
+         BOOST_CONTAINER_RETHROW
+      }
+      BOOST_CONTAINER_CATCH_END
+      boost::movelib::rotate_gcd
+         (this->begin() + difference_type(n_pos), this->begin() + difference_type(old_size), this->end());
+      return this->begin() + difference_type(n_pos);
    }
 
 #if !defined(BOOST_NO_CXX11_HDR_INITIALIZER_LIST)
@@ -1989,7 +2021,7 @@ class deque_impl : protected deque_base<typename real_allocator<T, Allocator>::t
       typedef typename iter_size<FwdIt>::type it_size_type;
       const it_size_type sz = boost::container::iterator_udistance(first, last);
       if (BOOST_UNLIKELY(sz > size_type(-1))){
-         boost::container::throw_length_error("vector::insert, FwdIt's max length reached");
+         boost::container::throw_length_error("deque::insert, FwdIt's max length reached");
       }
       const size_type n = static_cast<size_type>(sz);
 
@@ -2027,7 +2059,8 @@ class deque_impl : protected deque_base<typename real_allocator<T, Allocator>::t
          this->priv_pop_back_aux();
    }
 
-   iterator erase(const_iterator pos) BOOST_NOEXCEPT_OR_NOTHROW
+   iterator erase(const_iterator pos)
+      BOOST_NOEXCEPT_IF(dtl::is_nothrow_move_assignable<value_type>::value)
    {
       BOOST_ASSERT(this->priv_in_range(pos));
       iterator next = pos.unconst();
@@ -2047,11 +2080,14 @@ class deque_impl : protected deque_base<typename real_allocator<T, Allocator>::t
       return pos.unconst();
    }
 
-   iterator erase(const_iterator first, const_iterator last) BOOST_NOEXCEPT_OR_NOTHROW
+   iterator erase(const_iterator first, const_iterator last)
+      BOOST_NOEXCEPT_IF(dtl::is_nothrow_move_assignable<value_type>::value)
    {
       BOOST_ASSERT(first == last ||
          (first < last && this->priv_in_range(first) && this->priv_in_range_or_end(last)));
       const size_type n = static_cast<size_type>(last - first);
+      if (BOOST_UNLIKELY(!n)) //An empty range is a no-op
+         return last.unconst();
       if (n == this->prot_size()) {
          this->clear();
          return this->end();
@@ -2158,8 +2194,9 @@ class deque_impl : protected deque_base<typename real_allocator<T, Allocator>::t
 
    void priv_move_assign(BOOST_RV_REF(deque_impl) x, dtl::bool_<true> /*steal_resources*/)
    {
-      //Destroy objects but retain memory in case x reuses it in the future
+      //Destroy objects and free the memory of *this with its current allocator
       this->clear();
+      this->prot_clear_map();
       //Move allocator if needed
       dtl::bool_<allocator_traits_type::propagate_on_container_move_assignment::value> flag;
       dtl::move_alloc(this->alloc(), x.alloc(), flag);
@@ -2308,15 +2345,23 @@ class deque_impl : protected deque_base<typename real_allocator<T, Allocator>::t
 
             BOOST_CONTAINER_TRY {
                this->priv_segmented_proxy_uninitialized_copy_n_and_update(mid_start, mid_count, proxy);
-               this->members_.dec_start(mid_count);
-               this->priv_segmented_uninitialized_move_alloc_n(old_start, elemsbefore, new_start);
+               BOOST_CONTAINER_TRY {
+                  this->priv_segmented_uninitialized_move_alloc_n(old_start, elemsbefore, new_start);
+               }
+               BOOST_CONTAINER_CATCH(...) {
+                  //Destroy the new elements before their nodes are freed
+                  this->prot_destroy_range(mid_start, old_start);
+                  BOOST_CONTAINER_RETHROW
+               }
+               BOOST_CONTAINER_CATCH_END
             }
             BOOST_CONTAINER_CATCH(...) {
                this->prot_deallocate_nodes_if_not_reservable(new_start.m_node, old_start.get_node());
                BOOST_CONTAINER_RETHROW
             }
             BOOST_CONTAINER_CATCH_END
-            this->members_.dec_start(size_type(n - mid_count));
+            //The start changes only when all the new elements are constructed
+            this->members_.dec_start(n);
             this->priv_segmented_proxy_copy_n_and_update(old_start, elemsbefore, proxy);
             return mid_start;
          }
@@ -2358,7 +2403,9 @@ class deque_impl : protected deque_base<typename real_allocator<T, Allocator>::t
                this->priv_segmented_proxy_uninitialized_copy_n_and_update(old_finish, raw_gap, proxy);
             }
             BOOST_CONTAINER_CATCH(...) {
-               this->prot_destroy_range(old_finish, old_finish + difference_type(elemsafter));
+               //Destroy the moved elements (the new elements constructed in
+               //[old_finish, old_finish + raw_gap) are destroyed by the failed copy)
+               this->prot_destroy_range(old_finish + difference_type(raw_gap), old_finish + difference_type(n));
                BOOST_CONTAINER_RETHROW
             }
             BOOST_CONTAINER_CATCH_END
@@ -2376,6 +2423,9 @@ class deque_impl : protected deque_base<typename real_allocator<T, Allocator>::t
    template<class InsertProxy>
    iterator priv_insert_aux_impl(const_iterator p, size_type n, InsertProxy proxy)
    {
+      //An empty insertion must not move elements onto themselves
+      if (BOOST_UNLIKELY(!n))
+         return p.unconst();
       const size_type elemsbefore = this->prot_it_to_start_off(p);
 
       if (elemsbefore == this->prot_size()) {
@@ -2401,23 +2451,28 @@ class deque_impl : protected deque_base<typename real_allocator<T, Allocator>::t
          BOOST_CONSTEXPR_OR_CONST size_type block_size = get_block_size();
 
          index_pointer current_node = first.get_node();
+         //Number of elements constructed in the complete chunks (the proxy destroys
+         //the elements of a chunk that throws)
+         size_type constructed = 0u;
 
          BOOST_CONTAINER_TRY{
             const pointer cur = first.get_cur();
             const size_type block = size_type(block_size - size_type(cur - *current_node));
             size_type cnt = n < block ? n: block;
             proxy.uninitialized_copy_n_and_update(this->alloc(), boost::movelib::to_raw_pointer(cur), cnt);
+            constructed = cnt;
             n = size_type(n - cnt);
 
             while (n) {
                ++current_node;
                cnt = n < block_size ? n: block_size;
                proxy.uninitialized_copy_n_and_update(this->alloc(), boost::movelib::to_raw_pointer(*current_node), cnt);
+               constructed = size_type(constructed + cnt);
                n = size_type(n - cnt);
             }
          }
          BOOST_CONTAINER_CATCH(...) {
-            this->prot_destroy_range(first, iterator(*current_node, current_node));
+            this->prot_destroy_range(first, first + difference_type(constructed));
             BOOST_CONTAINER_RETHROW
          }
          BOOST_CONTAINER_CATCH_END
@@ -2452,14 +2507,17 @@ class deque_impl : protected deque_base<typename real_allocator<T, Allocator>::t
       }
    }
 
+   //Constructs n elements at first. If an exception is thrown, frees the nodes
+   //[new_nodes_first, new_nodes_last), allocated for the new elements.
    template <class InsertProxy>
-   void priv_insert_segmented_uninitialized_copy_n_and_update(const iterator first, size_type n, InsertProxy proxy)
+   void priv_insert_segmented_uninitialized_copy_n_and_update
+      (const iterator first, size_type n, InsertProxy proxy, index_pointer new_nodes_first, index_pointer new_nodes_last)
    {
       BOOST_CONTAINER_TRY{
          this->priv_segmented_proxy_uninitialized_copy_n_and_update(first, n, proxy);
       }
       BOOST_CONTAINER_CATCH(...) {
-         this->prot_deallocate_nodes_if_not_reservable(first.get_node() + 1, (first+difference_type(n)).get_node() + 1);
+         this->prot_deallocate_nodes_if_not_reservable(new_nodes_first, new_nodes_last);
          BOOST_CONTAINER_RETHROW
       }
       BOOST_CONTAINER_CATCH_END
@@ -2496,6 +2554,9 @@ class deque_impl : protected deque_base<typename real_allocator<T, Allocator>::t
          BOOST_CONSTEXPR_OR_CONST size_type block_size = get_block_size();
 
          index_pointer current_node = first.get_node();
+         //[dest_first, dest) holds the elements constructed in the complete chunks
+         //(uninitialized_move_alloc_n destroys the elements of a chunk that throws)
+         const iterator dest_first = dest;
 
          BOOST_CONTAINER_TRY{
             const pointer cur = first.get_cur();
@@ -2512,7 +2573,7 @@ class deque_impl : protected deque_base<typename real_allocator<T, Allocator>::t
             }
          }
          BOOST_CONTAINER_CATCH(...) {
-            this->prot_destroy_range(first, iterator(*current_node, current_node));
+            this->prot_destroy_range(dest_first, dest);
             BOOST_CONTAINER_RETHROW
          }
          BOOST_CONTAINER_CATCH_END
@@ -2530,6 +2591,9 @@ class deque_impl : protected deque_base<typename real_allocator<T, Allocator>::t
          BOOST_CONSTEXPR_OR_CONST size_type block_size = get_block_size();
 
          index_pointer current_node = first.get_node();
+         //[dest_first, dest) holds the elements constructed in the complete chunks
+         //(uninitialized_copy_alloc_n destroys the elements of a chunk that throws)
+         const iterator dest_first = dest;
 
          BOOST_CONTAINER_TRY{
             const pointer cur = first.get_cur();
@@ -2546,7 +2610,7 @@ class deque_impl : protected deque_base<typename real_allocator<T, Allocator>::t
             }
          }
          BOOST_CONTAINER_CATCH(...) {
-            this->prot_destroy_range(first.unconst(), iterator(*current_node, current_node));
+            this->prot_destroy_range(dest_first, dest);
             BOOST_CONTAINER_RETHROW
          }
          BOOST_CONTAINER_CATCH_END
@@ -2602,7 +2666,9 @@ class deque_impl : protected deque_base<typename real_allocator<T, Allocator>::t
    {
       this->priv_reserve_elements_at_back(n);
       const iterator old_finish = this->prot_finish();
-      this->priv_insert_segmented_uninitialized_copy_n_and_update(old_finish, n, proxy);
+      //New nodes: after the node of old_finish, up to the node of the new finish
+      this->priv_insert_segmented_uninitialized_copy_n_and_update
+         (old_finish, n, proxy, old_finish.get_node() + 1, (old_finish + difference_type(n)).get_node() + 1);
       this->prot_inc_finish(n);
       return old_finish;
    }
@@ -2614,7 +2680,9 @@ class deque_impl : protected deque_base<typename real_allocator<T, Allocator>::t
       this->priv_reserve_elements_at_front(n);
       const iterator old_start = this->prot_start();
       const iterator new_start = old_start - difference_type(n);
-      this->priv_insert_segmented_uninitialized_copy_n_and_update(new_start, n, proxy);
+      //New nodes: from the node of new_start, up to the node of old_start (it holds elements)
+      this->priv_insert_segmented_uninitialized_copy_n_and_update
+         (new_start, n, proxy, new_start.get_node(), old_start.get_node());
       this->members_.dec_start(n);
       return new_start;
    }
@@ -2647,7 +2715,7 @@ class deque_impl : protected deque_base<typename real_allocator<T, Allocator>::t
       typedef typename iter_size<FwdIt>::type it_size_type;
       const it_size_type sz = boost::container::iterator_udistance(first, last);
       if (BOOST_UNLIKELY(sz > size_type(-1))){
-         boost::container::throw_length_error("vector::insert, FwdIt's max length reached");
+         boost::container::throw_length_error("deque::insert, FwdIt's max length reached");
       }
       const size_type n = static_cast<size_type>(sz);
       this->prot_initialize_map_and_nodes(n);
@@ -2726,14 +2794,15 @@ class deque_impl : protected deque_base<typename real_allocator<T, Allocator>::t
 
 namespace boost {
 
-//!has_trivial_destructor_after_move<> == true_type
-//!specialization for optimizations
+//!has_trivial_destructor_after_move<> specialization for optimizations
 template <class T, class Allocator, bool SingleEnded, class Options>
 struct has_trivial_destructor_after_move<boost::container::deque_impl<T, Allocator, SingleEnded, Options> >
 {
    typedef typename boost::container::deque_impl<T, Allocator, SingleEnded, Options>::allocator_type allocator_type;
-   typedef typename boost::container::allocator_traits<allocator_type>::pointer pointer;
-   BOOST_STATIC_CONSTEXPR bool value = ::boost::has_trivial_destructor_after_move<allocator_type>::value &&
+   typedef boost::container::allocator_traits<allocator_type> allocator_traits_type;
+   typedef typename allocator_traits_type::pointer pointer;
+   BOOST_STATIC_CONSTEXPR bool value = allocator_traits_type::is_always_equal::value &&
+                             ::boost::has_trivial_destructor_after_move<allocator_type>::value &&
                              ::boost::has_trivial_destructor_after_move<pointer>::value;
 };
 

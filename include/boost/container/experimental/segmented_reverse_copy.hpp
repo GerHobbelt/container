@@ -20,7 +20,7 @@
 
 #include <boost/container/detail/config_begin.hpp>
 #include <boost/container/detail/workaround.hpp>
-#include <boost/container/experimental/segmented_iterator_traits.hpp>
+#include <boost/container/experimental/detail/segmented_common_algo.hpp>
 #include <boost/container/detail/iterator.hpp>
 
 namespace boost {
@@ -48,7 +48,7 @@ segmented_reverse_copy_dst_bounded
 {
    BOOST_CONTAINER_SEGMENTED_UNROLL(4)
    while(first != last) {
-      if(dst_first == dst_last)
+      if(BOOST_UNLIKELY(dst_first == dst_last))
          goto out_path;
       --last;
       *dst_first = *last;
@@ -58,6 +58,7 @@ segmented_reverse_copy_dst_bounded
    return segduo<BidirIter, DstIter>(last, dst_first);
 }
 
+#if BOOST_CONTAINER_SEGMENTED_ENABLE_RA_SPECIALIZATIONS
 template <class RASrcIter, class RADstIter>
 BOOST_CONTAINER_FORCEINLINE
 typename iterator_enable_if_tag
@@ -73,6 +74,7 @@ segmented_reverse_copy_dst_bounded
    return (segmented_reverse_copy_dst_bounded)(last - n, last, dst_first, unreachable_sentinel_t(),
       non_segmented_iterator_tag(), src_tag);
 }
+#endif   // BOOST_CONTAINER_SEGMENTED_ENABLE_RA_SPECIALIZATIONS
 
 template <class BidirIter, class SegDstIter, class SrcCat>
 segduo<BidirIter, SegDstIter> segmented_reverse_copy_dst_bounded
@@ -87,29 +89,28 @@ segduo<BidirIter, SegDstIter> segmented_reverse_copy_dst_bounded
    dst_segment_iterator       sfirst = dst_traits::segment(dst_first);
    const dst_segment_iterator slast  = dst_traits::segment(dst_last);
 
-   if(sfirst == slast) {
-      segduo<BidirIter, dst_local_iterator> r = (segmented_reverse_copy_dst_bounded)
-         (first, last, dst_traits::local(dst_first), dst_traits::local(dst_last), dst_is_local_seg_t(), SrcCat());
-      return segduo<BidirIter, SegDstIter>(r.first, dst_traits::compose(sfirst, r.second));
-   }
-   else {
-      segduo<BidirIter, dst_local_iterator> r = (segmented_reverse_copy_dst_bounded)
-         (first, last, dst_traits::local(dst_first), dst_traits::end(sfirst), dst_is_local_seg_t(), SrcCat());
-      last = r.first;
-      if(first == last)
-         return segduo<BidirIter, SegDstIter>(last, dst_traits::compose(sfirst, r.second));
+   dst_local_iterator db = dst_traits::local(dst_first);
 
-      for(++sfirst; sfirst != slast; ++sfirst) {
-         r = (segmented_reverse_copy_dst_bounded)
-            (first, last, dst_traits::begin(sfirst), dst_traits::end(sfirst), dst_is_local_seg_t(), SrcCat());
+   for(;;) {
+      const bool last_seg = sfirst == slast;
+      const dst_local_iterator de = last_seg ? dst_traits::local(dst_last) : dst_traits::end(sfirst);
+      {
+         const segduo<BidirIter, dst_local_iterator> r = (segmented_reverse_copy_dst_bounded)
+            (first, last, db, de, dst_is_local_seg_t(), SrcCat());
          last = r.first;
-         if(first == last)
+         if(last_seg || BOOST_UNLIKELY(first == last))
             return segduo<BidirIter, SegDstIter>(last, dst_traits::compose(sfirst, r.second));
       }
 
-      r = (segmented_reverse_copy_dst_bounded)
-         (first, last, dst_traits::begin(slast), dst_traits::local(dst_last), dst_is_local_seg_t(), SrcCat());
-      return segduo<BidirIter, SegDstIter>(r.first, dst_traits::compose(sfirst, r.second));
+      for(++sfirst; sfirst != slast; ++sfirst) {
+         const segduo<BidirIter, dst_local_iterator> r = (segmented_reverse_copy_dst_bounded)
+            (first, last, dst_traits::begin(sfirst), dst_traits::end(sfirst), dst_is_local_seg_t(), SrcCat());
+         last = r.first;
+         if(BOOST_UNLIKELY(first == last))
+            return segduo<BidirIter, SegDstIter>(last, dst_traits::compose(sfirst, r.second));
+      }
+
+      db = dst_traits::begin(sfirst);
    }
 }
 
@@ -138,7 +139,7 @@ SegDstIter segmented_reverse_copy_dst_dispatch
    typedef typename dst_traits::segment_iterator  dst_segment_iterator;
    typedef typename segmented_iterator_traits<dst_local_iterator>::is_segmented_iterator dst_is_local_seg_t;
 
-   if(first == last)
+   if(BOOST_UNLIKELY(first == last))
       return result;
 
    dst_segment_iterator dst_seg   = dst_traits::segment(result);
@@ -149,7 +150,7 @@ SegDstIter segmented_reverse_copy_dst_dispatch
       const segduo<BidirIter, dst_local_iterator> r = (segmented_reverse_copy_dst_bounded)
          (first, last, dst_local, dst_end, dst_is_local_seg_t(), Cat());
       last = r.first;
-      if(first != last) {
+      if(BOOST_LIKELY(first != last)) {
          ++dst_seg;
          dst_local = dst_traits::begin(dst_seg);
       }
@@ -167,14 +168,9 @@ BOOST_CONTAINER_FORCEINLINE
 typename algo_enable_if_c<!Tag::value, OutIter>::type
    segmented_reverse_copy_dispatch(BidirIter first, BidirIter last, OutIter result, Tag, Cat)
 {
-#if !defined(BOOST_CONTAINER_DISABLE_MULTI_SEGMENTED_ALGO)
    typedef segmented_iterator_traits<OutIter> dst_traits;
    return (segmented_reverse_copy_dst_dispatch)
       (first, last, result, typename dst_traits::is_segmented_iterator(), Cat());
-#else
-   return (segmented_reverse_copy_dst_dispatch)
-      (first, last, result, non_segmented_iterator_tag(), Cat());
-#endif
 }
 
 template <class SegIter, class OutIter, class Cat>
@@ -191,16 +187,23 @@ OutIter segmented_reverse_copy_dispatch
    segment_iterator const sfirst = traits::segment(first);
    segment_iterator       slast  = traits::segment(last);
 
-   if(sfirst == slast) {
-      return (segmented_reverse_copy_dispatch)(traits::local(first), traits::local(last), result, is_local_seg_t(), local_cat_t());
-   }
-   else {
-      result = (segmented_reverse_copy_dispatch)(traits::begin(slast), traits::local(last), result, is_local_seg_t(), local_cat_t());
+   local_iterator le = traits::local(last);
 
+   for(;;) {
+      //Partial segments (last and first) share this call site: the walk runs
+      //backwards, so the fused bound is the *begin* of the copied range.
+      const bool first_seg = sfirst == slast;
+      const local_iterator lb = first_seg ? traits::local(first) : traits::begin(slast);
+      result = (segmented_reverse_copy_dispatch)(lb, le, result, is_local_seg_t(), local_cat_t());
+      if(BOOST_UNLIKELY(first_seg))
+         return result;
+
+      //Middle segments (in reverse) keep their own call site: begin/end both
+      //come from slast, so the leaf can be specialised for full segments
       for (--slast; slast != sfirst; --slast)
          result = (segmented_reverse_copy_dispatch)(traits::begin(slast), traits::end(slast), result, is_local_seg_t(), local_cat_t());
 
-      return (segmented_reverse_copy_dispatch)(traits::local(first), traits::end(sfirst), result, is_local_seg_t(), local_cat_t());
+      le = traits::end(sfirst);
    }
 }
 

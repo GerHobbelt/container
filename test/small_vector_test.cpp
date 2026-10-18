@@ -12,11 +12,16 @@
 #include "vector_test.hpp"
 #include "movable_int.hpp"
 #include "propagate_allocator_test.hpp"
+#include "void_allocator_test.hpp"
 #include "default_init_test.hpp"
 #include "../../intrusive/test/iterator_test.hpp"
+#include "unqualified_swap_test.hpp"
 
 #include <boost/container/allocator_traits.hpp>
 
+#ifdef _MSC_VER
+#pragma warning(disable : 4530) // C++ exception handler used, but unwind semantics are not enabled
+#endif
 #include <iostream>
 
 struct boost_container_small_vector;
@@ -291,6 +296,25 @@ bool test_small_vector_base_test()
 //small vector has internal storage so some special swap cases must be tested
 bool test_swap()
 {
+   {  //Unqualified swap must use small_vector's capacity-aware swap through ADL
+      typedef boost::container::small_vector<int, 2> small_vec;
+      small_vec v;
+      v.push_back(1);
+      v.push_back(11);
+
+      small_vec w;
+      w.push_back(2);
+      w.push_back(22);
+
+      small_vec v_copy = v;
+      small_vec w_copy = w;
+
+      swap(v, w);
+
+      if (w != v_copy || v != w_copy || !v.is_small() || !w.is_small())
+         return false;
+   }
+
    typedef boost::container::small_vector<int, 10> vec;
    {  //v bigger than static capacity, w empty
       vec v;
@@ -473,8 +497,128 @@ using namespace boost::container;
 //Test the expected sizeof()
 BOOST_CONTAINER_STATIC_ASSERT_MSG(7*sizeof(void*) == sizeof(small_vector<void*, 4>), "sizeof has an unexpected value");
 
+struct small_vector_data
+{
+   template<class C>
+   const char *operator()(const C &c) const
+   {  return reinterpret_cast<const char *>(c.data());  }
+};
+
+struct small_vector_is_small
+{
+   template<class C>
+   bool operator()(const C &c) const
+   {  return c.is_small();  }
+};
+
+bool test_unqualified_swap()
+{
+   namespace us = boost_container_test_unqualified_swap;
+   typedef boost::container::small_vector<int, 4>   small_vec;
+   typedef boost::container::small_vector_base<int> small_vec_base;
+
+   //small_vector itself
+   {
+      small_vec a;  a.push_back(1);  a.push_back(2);
+      small_vec b;  b.push_back(7);  b.push_back(8);  b.push_back(9);
+      if(!us::test_unqualified_swap_internal_buffer
+            (a, b, small_vector_data(), small_vector_is_small()))
+         return false;
+   }
+   //...and through small_vector_base, the documented way to pass a
+   //small_vector to a function without templating on N
+   {
+      small_vec a;  a.push_back(1);  a.push_back(2);
+      small_vec b;  b.push_back(7);  b.push_back(8);  b.push_back(9);
+      small_vec_base &ba = a;
+      small_vec_base &bb = b;
+      swap(ba, bb);
+      if(a.size() != 3u || a[0] != 7 || a[1] != 8 || a[2] != 9)
+         return false;
+      if(b.size() != 2u || b[0] != 1 || b[1] != 2)
+         return false;
+      //Each must still be using its own inline buffer, not the other's
+      if(!a.is_small() || !b.is_small())
+         return false;
+      if(small_vector_data()(a) <  reinterpret_cast<const char *>(&a) ||
+         small_vector_data()(a) >= reinterpret_cast<const char *>(&a) + sizeof a)
+         return false;
+      if(small_vector_data()(b) <  reinterpret_cast<const char *>(&b) ||
+         small_vector_data()(b) >= reinterpret_cast<const char *>(&b) + sizeof b)
+         return false;
+   }
+   return true;
+}
+
+//Move constructs a small_vector from a small_vector_base with another internal capacity
+template<std::size_t SrcN, std::size_t DstN>
+bool test_move_from_base_with_other_capacity()
+{
+   typedef boost::container::small_vector_base<int> base_t;
+   const std::size_t sizes[] = { 0u, 1u, DstN, DstN + 1u, SrcN, SrcN + 1u, 3u*(SrcN + DstN) + 5u };
+   for (std::size_t si = 0; si != sizeof(sizes)/sizeof(sizes[0]); ++si) {
+      const std::size_t n = sizes[si];
+      small_vector<int, SrcN> src;
+      for (std::size_t i = 0; i != n; ++i) {
+         src.push_back(int(i));
+      }
+      small_vector<int, DstN> dst(boost::move(static_cast<base_t&>(src)));
+      if (dst.size() != n || dst.capacity() < n)
+         return false;
+      for (std::size_t i = 0; i != n; ++i) {
+         if (dst[i] != int(i))
+            return false;
+      }
+      dst.push_back(-1);
+   }
+   return true;
+}
+
+//Swaps through small_vector_base (different internal capacities) and small_vector<T, 0>
+//with a propagating (POCS) allocator that compares unequal. propagation_test_allocator checks
+//that each block is freed by the allocator that allocated it.
+template<std::size_t N1, std::size_t N2>
+bool test_swap_with_propagated_unequal_allocators()
+{
+   typedef test::propagation_test_allocator<int, true, true, true, true, true> alloc_t;
+   typedef small_vector<int, N1, alloc_t>       sv1_t;
+   typedef small_vector<int, N2, alloc_t>       sv2_t;
+   typedef small_vector_base<int, alloc_t>      base_t;
+   const std::size_t sizes[] = { 0u, 1u, 3u, 9u, 30u };
+   const std::size_t num_sizes = sizeof(sizes)/sizeof(sizes[0]);
+   for (std::size_t i1 = 0; i1 != num_sizes; ++i1)
+   for (std::size_t i2 = 0; i2 != num_sizes; ++i2) {
+      const alloc_t a1, a2;   //different ids: unequal
+      sv1_t v1(a1);
+      sv2_t v2(a2);
+      for (std::size_t i = 0; i != sizes[i1]; ++i) v1.push_back(int(i));
+      for (std::size_t i = 0; i != sizes[i2]; ++i) v2.push_back(int(100 + i));
+      static_cast<base_t&>(v1).swap(static_cast<base_t&>(v2));
+      if (v1.size() != sizes[i2] || v2.size() != sizes[i1])
+         return false;
+      if (v1.get_stored_allocator().id_ != a2.id_ || v2.get_stored_allocator().id_ != a1.id_)
+         return false;
+      for (std::size_t i = 0; i != v1.size(); ++i) if (v1[i] != int(100 + i)) return false;
+      for (std::size_t i = 0; i != v2.size(); ++i) if (v2[i] != int(i)) return false;
+      v1.push_back(-1);   //may reallocate: frees with v1's allocator
+      v2.push_back(-1);
+   }
+   return true;
+}
+
 int main()
 {
+   if(!test_unqualified_swap())
+      return 1;
+
+   if(!test_swap_with_propagated_unequal_allocators<4, 4>() || !test_swap_with_propagated_unequal_allocators<2, 16>() ||
+      !test_swap_with_propagated_unequal_allocators<0, 0>() || !test_swap_with_propagated_unequal_allocators<0, 5>())
+      return 1;
+
+   if(!test_move_from_base_with_other_capacity<16, 2>() || !test_move_from_base_with_other_capacity<2, 16>() ||
+      !test_move_from_base_with_other_capacity<4, 0>()  || !test_move_from_base_with_other_capacity<0, 4>())
+      return 1;
+
    if(!test_swap())
       return 1;
 
@@ -483,6 +627,16 @@ int main()
 
    if (test::vector_test< small_vector<int, 2000> >())
       return 1;
+
+   ////////////////////////////////////
+   //    Void value_type allocator
+   ////////////////////////////////////
+   if(!test::test_void_allocator
+         < small_vector<int, 8, new_allocator<void> >
+         , new_allocator<int> >()) {
+      std::cerr << "test_void_allocator small_vector failed" << std::endl;
+      return 1;
+   }
 
    if (test_cont_variants< new_allocator<void> >())
       return 1;

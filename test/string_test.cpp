@@ -8,8 +8,14 @@
 //
 //////////////////////////////////////////////////////////////////////////////
 
+#ifdef _MSC_VER
+#pragma warning(disable : 4530) // C++ exception handler used, but unwind semantics are not enabled
+#endif
+
 #include <boost/container/vector.hpp>
 #include <boost/container/string.hpp>
+#include "void_allocator_test.hpp"
+#include <boost/container/new_allocator.hpp>
 #include <string>
 #include <vector>
 #include <boost/container/detail/algorithm.hpp> //equal()
@@ -26,7 +32,8 @@
 #include "comparison_test.hpp"
 #include "../../intrusive/test/iterator_test.hpp"
 #include <boost/utility/string_view.hpp>
-#include <boost/core/lightweight_test.hpp>
+#include "lightweight_test.hpp"
+#include "unqualified_swap_test.hpp"
 #include <boost/core/lightweight_test_trait.hpp>
 #if BOOST_CXX_VERSION >= 201103L
 #include <boost/functional/hash.hpp>
@@ -94,6 +101,26 @@ ForwardIt unique(ForwardIt first, ForwardIt const last)
    return first;
 }
 
+//Writes "number" as text without going through the CRT. std::sprintf is
+//deprecated in several compilers and there is no portable printf that is both
+//warning-free and available for every character type.
+template<class CharType>
+void write_number(CharType *buffer, unsigned long long number, const CharType *digits)
+{
+   CharType *buf = buffer;
+   bool go_ahead = true;
+   while(go_ahead){
+      const unsigned long long rem = number % 10u;
+      number = number / 10u;
+      *buf = digits[rem];
+      ++buf;
+      if(!number){
+         *buf = 0;
+         go_ahead = false;
+      }
+   }
+}
+
 template<class CharType>
 struct string_literals;
 
@@ -110,30 +137,8 @@ struct string_literals<char>
       {  return "LongLongLongLongLongLongLongLongLongLongLongLongLongString";  }
    static char Char()
       {  return 'C';  }
-   static void sprintf_number(char *buf, int number)
-   {
-      std::sprintf(buf, "%i", number);
-   }
-   static void sprintf_number(char *buf, unsigned number)
-   {
-      std::sprintf(buf, "%u", number);
-   }
-   static void sprintf_number(char *buf, long number)
-   {
-      std::sprintf(buf, "%li", number);
-   }
-   static void sprintf_number(char *buf, unsigned long number)
-   {
-      std::sprintf(buf, "%lu", number);
-   }
-   static void sprintf_number(char *buf, long long number)
-   {
-      std::sprintf(buf, "%lli", number);
-   }
-   static void sprintf_number(char *buf, unsigned long long number)
-   {
-      std::sprintf(buf, "%llu", number);
-   }
+   static void sprintf_number(char *buffer, unsigned long long number)
+   {  write_number(buffer, number, "0123456789");  }
 };
 
 template<>
@@ -150,25 +155,7 @@ struct string_literals<wchar_t>
    static wchar_t Char()
       {  return L'C';  }
    static void sprintf_number(wchar_t *buffer, unsigned long long number)
-   {
-      //For compilers without wsprintf, print it backwards
-      const wchar_t *digits = L"0123456789";
-      wchar_t *buf = buffer;
-
-      bool go_ahead = true;
-      while(go_ahead){
-         unsigned long long rem = number % 10;
-         number  = number / 10;
-
-         *buf = digits[rem];
-         ++buf;
-         if(!number){
-            *buf = 0;
-            go_ahead = false;
-         }
-      }
-
-   }
+   {  write_number(buffer, number, L"0123456789");  }
 };
 
 template<class CharType>
@@ -2398,8 +2385,56 @@ void test_with_lightweight_test()
 BOOST_CONTAINER_STATIC_ASSERT_MSG(3*sizeof(void*) == sizeof(string), "sizeof has an unexpected value");
 
 
+struct basic_string_data
+{
+   template<class S>
+   const char *operator()(const S &s) const
+   {  return reinterpret_cast<const char *>(s.data());  }
+};
+
+//"Short" here means the characters live inside the string object itself
+struct basic_string_is_short
+{
+   template<class S>
+   bool operator()(const S &s) const
+   {
+      const char *const d = reinterpret_cast<const char *>(s.data());
+      return d >= reinterpret_cast<const char *>(&s)
+          && d <  reinterpret_cast<const char *>(&s) + sizeof s;
+   }
+};
+
+bool test_unqualified_swap()
+{
+   namespace us = boost_container_test_unqualified_swap;
+   {  typedef boost::container::basic_string<char> str;
+      str a("abc");
+      str b("xyzw");
+      if(!us::test_unqualified_swap_internal_buffer
+            (a, b, basic_string_data(), basic_string_is_short()))
+         return false;
+   }
+   {  //Long strings take the heap path instead
+      typedef boost::container::basic_string<char> str;
+      str a(200u, 'a');
+      str b(300u, 'b');
+      if(!us::test_unqualified_swap(a, b))
+         return false;
+   }
+   {  typedef boost::container::basic_string<wchar_t> wstr;
+      wstr a(3u, L'a');
+      wstr b(4u, L'b');
+      if(!us::test_unqualified_swap(a, b))
+         return false;
+   }
+   return true;
+}
+
 int main()
 {
+   if(!test_unqualified_swap())
+      return 1;
+
    if(string_test<char>()){
       return 1;
    }
@@ -2459,16 +2494,14 @@ int main()
 
    ////////////////////////////////////
    //    has_trivial_destructor_after_move testing
+   //
+   //    With an always-equal allocator a moved-from string does not own memory
    ////////////////////////////////////
    // default allocator
    {
       typedef boost::container::basic_string<char> cont;
-      typedef cont::allocator_type allocator_type;
-      typedef boost::container::allocator_traits<allocator_type>::pointer pointer;
       BOOST_CONTAINER_STATIC_ASSERT_MSG
-      (  (boost::has_trivial_destructor_after_move<cont>::value ==
-          (boost::has_trivial_destructor_after_move<allocator_type>::value &&
-           boost::has_trivial_destructor_after_move<pointer>::value)),
+      (  boost::has_trivial_destructor_after_move<cont>::value,
           "has_trivial_destructor_after_move(default allocator) test failed");
    }
    // std::allocator
@@ -2477,13 +2510,21 @@ int main()
       typedef cont::allocator_type allocator_type;
       typedef boost::container::allocator_traits<allocator_type>::pointer pointer;
       BOOST_CONTAINER_STATIC_ASSERT_MSG
-      (  (boost::has_trivial_destructor_after_move<cont>::value ==
-          (boost::has_trivial_destructor_after_move<allocator_type>::value &&
-           boost::has_trivial_destructor_after_move<pointer>::value)),
+      (  boost::has_trivial_destructor_after_move<cont>::value ==
+            (boost::has_trivial_destructor_after_move<allocator_type>::value &&
+             boost::has_trivial_destructor_after_move<pointer>::value),
           "has_trivial_destructor_after_move(std::allocator) test failed");
    }
 
    test_with_lightweight_test();
 
-   return boost::report_errors();
+   
+   ////////////////////////////////////
+   //    Void value_type allocator
+   ////////////////////////////////////
+   BOOST_TEST((test::test_void_allocator
+         < basic_string<char, std::char_traits<char>, new_allocator<void> >
+         , new_allocator<char> >()));
+
+return boost::report_errors();
 }

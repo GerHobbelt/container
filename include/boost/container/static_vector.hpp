@@ -57,6 +57,7 @@ class static_storage_allocator
    inline static_storage_allocator() BOOST_NOEXCEPT_OR_NOTHROW
    {}
 
+   //Empty user-provided copy operations: the buffer is handled by static_vector
    inline static_storage_allocator(const static_storage_allocator &) BOOST_NOEXCEPT_OR_NOTHROW
    {}
 
@@ -64,7 +65,7 @@ class static_storage_allocator
    {  return *this;  }
 
    //GCC in C++03 regressions fails, due to a bug in strict-aliasing optimizations
-   #if defined(BOOST_GCC) && (BOOST_GCC >= 120000) && (BOOST_CXX_VERSION < 201103L)
+   #if defined(BOOST_CONTAINER_GCC_PRAGMAS) && (BOOST_GCC >= 120000) && (BOOST_CXX_VERSION < 201103L)
    #pragma GCC push_options
    #pragma GCC optimize("no-strict-aliasing")
    #endif
@@ -73,7 +74,7 @@ class static_storage_allocator
    //Avoiding launder due to performance regressions, see https://github.com/boostorg/container/issues/309
    {  return const_cast<T*>(static_cast<const T*>(static_cast<const void*>(storage.data)));  }
 
-   #if defined(BOOST_GCC) && (BOOST_GCC >= 120000) && (BOOST_CXX_VERSION < 201103L)
+   #if defined(BOOST_CONTAINER_GCC_PRAGMAS) && (BOOST_GCC >= 120000) && (BOOST_CXX_VERSION < 201103L)
    #pragma GCC pop_options
    #endif
 
@@ -185,6 +186,13 @@ class static_vector
    typedef vector<T, allocator_type, options_type> base_t;
 
    BOOST_COPYABLE_AND_MOVABLE(static_vector)
+
+   //Capacity must be representable by the stored_size option
+   typedef typename default_if_void
+      <typename dtl::get_static_vector_opt<Options>::type::stored_size_type, std::size_t>::type opt_stored_size_t;
+   BOOST_CONTAINER_STATIC_ASSERT_MSG
+      ( (Capacity <= std::size_t(opt_stored_size_t(-1)))
+      , "Capacity is too big for the stored_size option");
 
    template<class U, std::size_t OtherCapacity, class OtherOptions>
    friend class static_vector;

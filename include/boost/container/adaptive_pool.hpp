@@ -129,13 +129,14 @@ class adaptive_pool
    adaptive_pool() BOOST_NOEXCEPT_OR_NOTHROW
    {}
 
-   //!Copy constructor from other adaptive_pool.
-   adaptive_pool(const adaptive_pool &) BOOST_NOEXCEPT_OR_NOTHROW
-   {}
+   //Implicit copy operations and destructor: keeps the allocator trivially copyable (passed in registers)
+   #if defined(BOOST_CONTAINER_DOXYGEN_INVOKED)
+   //!Trivial copy constructor from other adaptive_pool.
+   adaptive_pool(const adaptive_pool &) BOOST_NOEXCEPT_OR_NOTHROW = default;
 
-   //!Copy assignment from other adaptive_pool.
-   adaptive_pool & operator=(const adaptive_pool &) BOOST_NOEXCEPT_OR_NOTHROW
-   {  return *this;  }
+   //!Trivial copy assignment from other adaptive_pool.
+   adaptive_pool & operator=(const adaptive_pool &) BOOST_NOEXCEPT_OR_NOTHROW = default;
+   #endif
 
    //!Copy constructor from related adaptive_pool.
    template<class T2>
@@ -144,9 +145,11 @@ class adaptive_pool
             BOOST_CONTAINER_DOCIGN(BOOST_MOVE_I Version)> &) BOOST_NOEXCEPT_OR_NOTHROW
    {}
 
-   //!Destructor
-   ~adaptive_pool() BOOST_NOEXCEPT_OR_NOTHROW
-   {}
+   //Implicit copy operations and destructor: keeps the allocator trivially copyable (passed in registers)
+   #if defined(BOOST_CONTAINER_DOXYGEN_INVOKED)
+   //!Trivial destructor
+   ~adaptive_pool() BOOST_NOEXCEPT_OR_NOTHROW = default;
+   #endif
 
    //!Returns the number of elements that could be allocated.
    //!Never throws
@@ -170,7 +173,7 @@ class adaptive_pool
          typedef dtl::singleton_default<shared_pool_t> singleton_t;
          return pointer(static_cast<T*>(singleton_t::instance().allocate_node()));
       }
-      void *ret = dlmalloc_memalign(count*sizeof(T), dtl::alignment_of<T>::value);
+      void *ret = dlmalloc_heap().allocate_aligned(dtl::alignment_of<T>::value, count*sizeof(T));
       if(BOOST_UNLIKELY(!ret))
          boost::container::throw_bad_alloc();
       return static_cast<pointer>(ret);
@@ -189,7 +192,7 @@ class adaptive_pool
          singleton_t::instance().deallocate_node(ptr);
          return;
       }
-      dlmalloc_free(ptr);
+      dlmalloc_heap().deallocate(ptr);
    }
 
    BOOST_CONTAINER_NODISCARD
@@ -198,7 +201,7 @@ class adaptive_pool
    {
       BOOST_CONTAINER_STATIC_ASSERT(( Version > 1 ));
       pointer ret = this->priv_allocation_command(command, limit_size, prefer_in_recvd_out_size, reuse);
-      if(BOOST_UNLIKELY(!ret && !(command & BOOST_CONTAINER_NOTHROW_ALLOCATION)))
+      if(BOOST_UNLIKELY(!ret && !(command & nothrow_allocation)))
          boost::container::throw_bad_alloc();
       return ret;
    }
@@ -209,7 +212,7 @@ class adaptive_pool
    size_type size(pointer p) const BOOST_NOEXCEPT_OR_NOTHROW
    {
       BOOST_CONTAINER_STATIC_ASSERT(( Version > 1 ));
-      return dlmalloc_size(p);
+      return dlmalloc::usable_size(p);
    }
 
    //!Allocates just one object. Memory allocated with this function
@@ -267,18 +270,17 @@ class adaptive_pool
    void allocate_many(size_type elem_size, std::size_t n_elements, multiallocation_chain &chain)
    {
       BOOST_CONTAINER_STATIC_ASSERT(( Version > 1 ));/*
-      dlmalloc_memchain ch;
-      BOOST_CONTAINER_MEMCHAIN_INIT(&ch);
-      if(BOOST_UNLIKELY(!dlmalloc_multialloc_nodes(n_elements, elem_size*sizeof(T), BOOST_CONTAINER_DL_MULTIALLOC_DEFAULT_CONTIGUOUS, &ch))){
+      dlmalloc::memchain ch;
+      if(BOOST_UNLIKELY(!dlmalloc_heap().multialloc_nodes_aligned(n_elements, elem_size*sizeof(T), dtl::alignment_of<T>::value, dlmalloc::default_contiguous, &ch))){
          boost::container::throw_bad_alloc();
       }
       chain.incorporate_after(chain.before_begin()
-                             ,(T*)BOOST_CONTAINER_MEMCHAIN_FIRSTMEM(&ch)
-                             ,(T*)BOOST_CONTAINER_MEMCHAIN_LASTMEM(&ch)
-                             ,BOOST_CONTAINER_MEMCHAIN_SIZE(&ch) );*/
-      if(BOOST_UNLIKELY(!dlmalloc_multialloc_nodes
-            ( n_elements, elem_size*sizeof(T), BOOST_CONTAINER_DL_MULTIALLOC_DEFAULT_CONTIGUOUS
-            , move_detail::force_ptr<dlmalloc_memchain *>(&chain)))){
+                             ,(T*)ch.first_mem()
+                             ,(T*)ch.last_mem()
+                             ,ch.size() );*/
+      if(BOOST_UNLIKELY(!dlmalloc_heap().multialloc_nodes_aligned
+            ( n_elements, elem_size*sizeof(T), dtl::alignment_of<T>::value, dlmalloc::default_contiguous
+            , move_detail::force_ptr<dlmalloc::memchain *>(&chain)))){
          boost::container::throw_bad_alloc();
       }
    }
@@ -288,30 +290,29 @@ class adaptive_pool
    void allocate_many(const size_type *elem_sizes, size_type n_elements, multiallocation_chain &chain)
    {
       BOOST_CONTAINER_STATIC_ASSERT(( Version > 1 ));/*
-      dlmalloc_memchain ch;
-      BOOST_CONTAINER_MEMCHAIN_INIT(&ch);
-      if(BOOST_UNLIKELY(!dlmalloc_multialloc_arrays(n_elements, elem_sizes, sizeof(T), BOOST_CONTAINER_DL_MULTIALLOC_DEFAULT_CONTIGUOUS, &ch))){
+      dlmalloc::memchain ch;
+      if(BOOST_UNLIKELY(!dlmalloc_heap().multialloc_arrays_aligned(n_elements, elem_sizes, sizeof(T), dtl::alignment_of<T>::value, dlmalloc::default_contiguous, &ch))){
          boost::container::throw_bad_alloc();
       }
       chain.incorporate_after(chain.before_begin()
-                             ,(T*)BOOST_CONTAINER_MEMCHAIN_FIRSTMEM(&ch)
-                             ,(T*)BOOST_CONTAINER_MEMCHAIN_LASTMEM(&ch)
-                             ,BOOST_CONTAINER_MEMCHAIN_SIZE(&ch) );*/
-      if(BOOST_UNLIKELY(!dlmalloc_multialloc_arrays
-         ( n_elements, elem_sizes, sizeof(T), BOOST_CONTAINER_DL_MULTIALLOC_DEFAULT_CONTIGUOUS
-         , move_detail::force_ptr<dlmalloc_memchain *>(&chain)))){
+                             ,(T*)ch.first_mem()
+                             ,(T*)ch.last_mem()
+                             ,ch.size() );*/
+      if(BOOST_UNLIKELY(!dlmalloc_heap().multialloc_arrays_aligned
+         ( n_elements, elem_sizes, sizeof(T), dtl::alignment_of<T>::value, dlmalloc::default_contiguous
+         , move_detail::force_ptr<dlmalloc::memchain *>(&chain)))){
          boost::container::throw_bad_alloc();
       }
    }
 
    void deallocate_many(multiallocation_chain &chain) BOOST_NOEXCEPT_OR_NOTHROW
    {/*
-      dlmalloc_memchain ch;
+      dlmalloc::memchain ch;
       void *beg(&*chain.begin()), *last(&*chain.last());
       size_t size(chain.size());
-      BOOST_CONTAINER_MEMCHAIN_INIT_FROM(&ch, beg, last, size);
-      dlmalloc_multidealloc(&ch);*/
-      dlmalloc_multidealloc(move_detail::force_ptr<dlmalloc_memchain *>(&chain));
+      ch.init_from(beg, last, size);
+      dlmalloc_heap().multidealloc(&ch);*/
+      dlmalloc_heap().multidealloc(move_detail::force_ptr<dlmalloc::memchain *>(&chain));
    }
 
    //!Deallocates all free blocks of the pool
@@ -346,7 +347,7 @@ class adaptive_pool
       ,size_type &prefer_in_recvd_out_size, pointer &reuse_ptr)
    {
       std::size_t const preferred_size = prefer_in_recvd_out_size;
-      dlmalloc_command_ret_t ret = {0 , 0};
+      dlmalloc::command_ret_t ret = {0 , 0};
       if(BOOST_UNLIKELY(limit_size > this->max_size() || preferred_size > this->max_size())){
          return pointer();
       }
@@ -355,7 +356,7 @@ class adaptive_pool
       std::size_t r_size;
       {
          void* reuse_ptr_void = reuse_ptr;
-         ret = dlmalloc_allocation_command( command, sizeof(T), dtl::alignment_of<T>::value
+         ret = dlmalloc_heap().allocation_command( command, sizeof(T), dtl::alignment_of<T>::value
                                           , l_size, p_size, &r_size, reuse_ptr_void);
          reuse_ptr = ret.second ? static_cast<T*>(reuse_ptr_void) : 0;
       }
@@ -364,6 +365,18 @@ class adaptive_pool
    }
 };
 
+//! An adaptive_pool-like allocator whose node pool is owned by the allocator object, not
+//! shared with other instances.
+//!
+//! - A copy (copy constructor, conversion from a rebound allocator, select_on_container_copy_construction)
+//!   has a new, empty pool, so a copy does not compare equal to the original.
+//! - Moving or swapping an allocator transfers its pool. Containers propagate the allocator
+//!   on move assignment and swap (propagate_on_container_move_assignment and
+//!   propagate_on_container_swap are true), so the nodes stay with the pool that allocated them.
+//! - Two allocators compare equal only if they are the same object.
+//!
+//! Arrays (allocate with count > 1, or any allocation for Version 2) are allocated from the
+//! shared dlmalloc heap, so they do not depend on the pool.
 template < class T
          , std::size_t NodesPerBlock   = ADP_nodes_per_block
          , std::size_t MaxFreeBlocks   = ADP_max_free_blocks
@@ -372,6 +385,10 @@ template < class T
          >
 class private_adaptive_pool
 {
+   #ifndef BOOST_CONTAINER_DOXYGEN_INVOKED
+   BOOST_COPYABLE_AND_MOVABLE(private_adaptive_pool)
+   #endif   //#ifndef BOOST_CONTAINER_DOXYGEN_INVOKED
+
    //!If Version is 1, the allocator is a STL conforming allocator. If Version is 2,
    //!the allocator offers advanced expand in place and burst allocation capabilities.
    public:
@@ -408,6 +425,13 @@ class private_adaptive_pool
    typedef boost::container::dtl::
       version_type<self_t, Version>             version;
 
+   //!The pool moves with the allocator, so the containers must propagate the allocator when
+   //!they move or swap their nodes
+   typedef dtl::false_type                      propagate_on_container_copy_assignment;
+   typedef dtl::true_type                       propagate_on_container_move_assignment;
+   typedef dtl::true_type                       propagate_on_container_swap;
+   typedef dtl::false_type                      is_always_equal;
+
    #ifndef BOOST_CONTAINER_DOXYGEN_INVOKED
    typedef boost::container::dtl::
       basic_multiallocation_chain<void*>              multiallocation_chain_void;
@@ -430,28 +454,32 @@ class private_adaptive_pool
          >       other;
    };
 
-   #ifndef BOOST_CONTAINER_DOXYGEN_INVOKED
-   private:
-   //!Not assignable from related private_adaptive_pool
-   template<class T2, std::size_t N2, std::size_t F2, std::size_t O2, unsigned Version2>
-   private_adaptive_pool& operator=
-      (const private_adaptive_pool<T2, N2, F2, O2, Version2>&);
-   #endif   //#ifndef BOOST_CONTAINER_DOXYGEN_INVOKED
-
    public:
    //!Default constructor
    private_adaptive_pool() BOOST_NOEXCEPT_OR_NOTHROW
    {}
 
-   //!Copy constructor from other private_adaptive_pool.
+   //!Copy constructor: the new allocator has a new, empty pool
    private_adaptive_pool(const private_adaptive_pool &) BOOST_NOEXCEPT_OR_NOTHROW
    {}
 
-   //!Copy assignment from other adaptive_pool.
-   private_adaptive_pool & operator=(const private_adaptive_pool &) BOOST_NOEXCEPT_OR_NOTHROW
+   //!Move constructor: the new allocator takes the pool of x, and x gets a new, empty pool
+   private_adaptive_pool(BOOST_RV_REF(private_adaptive_pool) x) BOOST_NOEXCEPT_OR_NOTHROW
+   {  m_pool.swap(x.m_pool);  }
+
+   //!Copy assignment: *this keeps its pool
+   private_adaptive_pool & operator=(BOOST_COPY_ASSIGN_REF(private_adaptive_pool)) BOOST_NOEXCEPT_OR_NOTHROW
    {  return *this;  }
 
-   //!Copy constructor from related private_adaptive_pool.
+   //!Move assignment: the pools are swapped. The nodes of the old pool of *this must have been
+   //!deallocated before (containers do it before they propagate the allocator)
+   private_adaptive_pool & operator=(BOOST_RV_REF(private_adaptive_pool) x) BOOST_NOEXCEPT_OR_NOTHROW
+   {
+      m_pool.swap(x.m_pool);
+      return *this;
+   }
+
+   //!Copy constructor from related private_adaptive_pool: the new allocator has a new, empty pool
    template<class T2>
    private_adaptive_pool
       (const private_adaptive_pool<T2, NodesPerBlock, MaxFreeBlocks, OverheadPercent
@@ -480,7 +508,7 @@ class private_adaptive_pool
       if(count == 1){
          return pointer(static_cast<T*>(m_pool.allocate_node()));
       }
-      return static_cast<pointer>(dlmalloc_memalign(count*sizeof(T), dtl::alignment_of<T>::value));
+      return static_cast<pointer>(dlmalloc_heap().allocate_aligned(dtl::alignment_of<T>::value, count*sizeof(T)));
    }
 
    //!Deallocate allocated memory.
@@ -493,7 +521,7 @@ class private_adaptive_pool
          m_pool.deallocate_node(ptr);
          return;
       }
-      dlmalloc_free(ptr);
+      dlmalloc_heap().deallocate(ptr);
    }
 
    BOOST_CONTAINER_NODISCARD
@@ -503,7 +531,7 @@ class private_adaptive_pool
                          pointer &reuse)
    {
       pointer ret = this->priv_allocation_command(command, limit_size, prefer_in_recvd_out_size, reuse);
-      if(BOOST_UNLIKELY(!ret && !(command & BOOST_CONTAINER_NOTHROW_ALLOCATION)))
+      if(BOOST_UNLIKELY(!ret && !(command & nothrow_allocation)))
          boost::container::throw_bad_alloc();
       return ret;
    }
@@ -511,7 +539,7 @@ class private_adaptive_pool
    //!Returns maximum the number of objects the previously allocated memory
    //!pointed by p can hold.
    size_type size(pointer p) const BOOST_NOEXCEPT_OR_NOTHROW
-   {  return dlmalloc_size(p);  }
+   {  return dlmalloc::usable_size(p);  }
 
    //!Allocates just one object. Memory allocated with this function
    //!must be deallocated only with deallocate_one().
@@ -547,9 +575,9 @@ class private_adaptive_pool
    void allocate_many(size_type elem_size, std::size_t n_elements, multiallocation_chain &chain)
    {
       BOOST_CONTAINER_STATIC_ASSERT(( Version > 1 ));
-      if(BOOST_UNLIKELY(!dlmalloc_multialloc_nodes
-            ( n_elements, elem_size*sizeof(T), BOOST_CONTAINER_DL_MULTIALLOC_DEFAULT_CONTIGUOUS
-            , move_detail::force_ptr<dlmalloc_memchain *>(&chain)))){
+      if(BOOST_UNLIKELY(!dlmalloc_heap().multialloc_nodes_aligned
+            ( n_elements, elem_size*sizeof(T), dtl::alignment_of<T>::value, dlmalloc::default_contiguous
+            , move_detail::force_ptr<dlmalloc::memchain *>(&chain)))){
          boost::container::throw_bad_alloc();
       }
    }
@@ -559,16 +587,16 @@ class private_adaptive_pool
    void allocate_many(const size_type *elem_sizes, size_type n_elements, multiallocation_chain &chain)
    {
       BOOST_CONTAINER_STATIC_ASSERT(( Version > 1 ));
-      if(BOOST_UNLIKELY(!dlmalloc_multialloc_arrays
-         (n_elements, elem_sizes, sizeof(T), BOOST_CONTAINER_DL_MULTIALLOC_DEFAULT_CONTIGUOUS
-         , move_detail::force_ptr<dlmalloc_memchain *>(&chain)))){
+      if(BOOST_UNLIKELY(!dlmalloc_heap().multialloc_arrays_aligned
+         (n_elements, elem_sizes, sizeof(T), dtl::alignment_of<T>::value, dlmalloc::default_contiguous
+         , move_detail::force_ptr<dlmalloc::memchain *>(&chain)))){
          boost::container::throw_bad_alloc();
       }
    }
 
    void deallocate_many(multiallocation_chain &chain) BOOST_NOEXCEPT_OR_NOTHROW
    {
-      dlmalloc_multidealloc(move_detail::force_ptr<dlmalloc_memchain *>(&chain));
+      dlmalloc_heap().multidealloc(move_detail::force_ptr<dlmalloc::memchain *>(&chain));
    }
 
    //!Deallocates all free blocks of the pool
@@ -577,22 +605,20 @@ class private_adaptive_pool
       m_pool.deallocate_free_blocks();
    }
 
-   //!Swaps allocators. Does not throw. If each allocator is placed in a
-   //!different memory segment, the result is undefined.
-   friend void swap(private_adaptive_pool &, private_adaptive_pool &) BOOST_NOEXCEPT_OR_NOTHROW
-   {}
+   //!Swaps the pools of the allocators. Does not throw.
+   friend void swap(private_adaptive_pool &l, private_adaptive_pool &r) BOOST_NOEXCEPT_OR_NOTHROW
+   {  l.m_pool.swap(r.m_pool);  }
 
-   //!An allocator always compares to true, as memory allocated with one
-   //!instance can be deallocated by another instance
+   //!Two allocators compare equal only if they are the same object: memory allocated by one
+   //!pool can't be deallocated by another pool
    BOOST_CONTAINER_NODISCARD
-   friend bool operator==(const private_adaptive_pool &, const private_adaptive_pool &) BOOST_NOEXCEPT_OR_NOTHROW
-   {  return true;   }
+   friend bool operator==(const private_adaptive_pool &l, const private_adaptive_pool &r) BOOST_NOEXCEPT_OR_NOTHROW
+   {  return &l == &r;   }
 
-   //!An allocator always compares to false, as memory allocated with one
-   //!instance can be deallocated by another instance
+   //!Returns !(l == r)
    BOOST_CONTAINER_NODISCARD
-   friend bool operator!=(const private_adaptive_pool &, const private_adaptive_pool &) BOOST_NOEXCEPT_OR_NOTHROW
-   {  return false;   }
+   friend bool operator!=(const private_adaptive_pool &l, const private_adaptive_pool &r) BOOST_NOEXCEPT_OR_NOTHROW
+   {  return &l != &r;   }
 
    private:
    pointer priv_allocation_command
@@ -600,7 +626,7 @@ class private_adaptive_pool
       ,size_type &prefer_in_recvd_out_size, pointer &reuse_ptr)
    {
       std::size_t const preferred_size = prefer_in_recvd_out_size;
-      dlmalloc_command_ret_t ret = {0 , 0};
+      dlmalloc::command_ret_t ret = {0 , 0};
       if(BOOST_UNLIKELY(limit_size > this->max_size() || preferred_size > this->max_size())){
          return pointer();
       }
@@ -609,7 +635,7 @@ class private_adaptive_pool
       std::size_t r_size;
       {
          void* reuse_ptr_void = reuse_ptr;
-         ret = dlmalloc_allocation_command( command, sizeof(T), dtl::alignment_of<T>::value
+         ret = dlmalloc_heap().allocation_command( command, sizeof(T), dtl::alignment_of<T>::value
                                           , l_size, p_size, &r_size, reuse_ptr_void);
          reuse_ptr = ret.second ? static_cast<T*>(reuse_ptr_void) : 0;
       }
@@ -617,6 +643,103 @@ class private_adaptive_pool
       return (pointer)ret.first;
    }
 };
+
+#ifndef BOOST_CONTAINER_DOXYGEN_INVOKED
+
+//adaptive_pool<void>: a type-erased allocator.
+//It does not allocate, so it has no pool
+template<std::size_t NodesPerBlock, std::size_t MaxFreeBlocks, std::size_t OverheadPercent, unsigned Version>
+class adaptive_pool<void, NodesPerBlock, MaxFreeBlocks, OverheadPercent, Version>
+{
+   typedef adaptive_pool<void, NodesPerBlock, MaxFreeBlocks, OverheadPercent, Version> self_t;
+   public:
+   typedef void                                 value_type;
+   typedef void *                               pointer;
+   typedef const void *                         const_pointer;
+   typedef std::size_t                          size_type;
+   typedef std::ptrdiff_t                       difference_type;
+   typedef boost::container::dtl::
+      version_type<self_t, Version>             version;
+
+   BOOST_STATIC_CONSTEXPR std::size_t nodes_per_block        = NodesPerBlock;
+   BOOST_STATIC_CONSTEXPR std::size_t max_free_blocks        = MaxFreeBlocks;
+   BOOST_STATIC_CONSTEXPR std::size_t overhead_percent       = OverheadPercent;
+   BOOST_STATIC_CONSTEXPR std::size_t real_nodes_per_block   = NodesPerBlock;
+
+   template<class T2>
+   struct rebind
+   {  typedef adaptive_pool<T2, NodesPerBlock, MaxFreeBlocks, OverheadPercent, Version> other;  };
+
+   adaptive_pool() BOOST_NOEXCEPT_OR_NOTHROW
+   {}
+
+   template<class T2>
+   adaptive_pool(const adaptive_pool<T2, NodesPerBlock, MaxFreeBlocks, OverheadPercent, Version> &) BOOST_NOEXCEPT_OR_NOTHROW
+   {}
+
+   //All instances share the pools, so they are equal
+   friend void swap(self_t &, self_t &) BOOST_NOEXCEPT_OR_NOTHROW
+   {}
+
+   BOOST_CONTAINER_NODISCARD
+   friend bool operator==(const adaptive_pool &, const adaptive_pool &) BOOST_NOEXCEPT_OR_NOTHROW
+   {  return true;   }
+
+   BOOST_CONTAINER_NODISCARD
+   friend bool operator!=(const adaptive_pool &, const adaptive_pool &) BOOST_NOEXCEPT_OR_NOTHROW
+   {  return false;   }
+};
+
+//private_adaptive_pool<void>: a type-erased allocator.
+//It does not allocate
+template<std::size_t NodesPerBlock, std::size_t MaxFreeBlocks, std::size_t OverheadPercent, unsigned Version>
+class private_adaptive_pool<void, NodesPerBlock, MaxFreeBlocks, OverheadPercent, Version>
+{
+   typedef private_adaptive_pool<void, NodesPerBlock, MaxFreeBlocks, OverheadPercent, Version> self_t;
+   public:
+   typedef void                                 value_type;
+   typedef void *                               pointer;
+   typedef const void *                         const_pointer;
+   typedef std::size_t                          size_type;
+   typedef std::ptrdiff_t                       difference_type;
+   typedef boost::container::dtl::
+      version_type<self_t, Version>             version;
+
+   typedef dtl::false_type                      propagate_on_container_copy_assignment;
+   typedef dtl::true_type                       propagate_on_container_move_assignment;
+   typedef dtl::true_type                       propagate_on_container_swap;
+   typedef dtl::false_type                      is_always_equal;
+
+   BOOST_STATIC_CONSTEXPR std::size_t nodes_per_block        = NodesPerBlock;
+   BOOST_STATIC_CONSTEXPR std::size_t max_free_blocks        = MaxFreeBlocks;
+   BOOST_STATIC_CONSTEXPR std::size_t overhead_percent       = OverheadPercent;
+   BOOST_STATIC_CONSTEXPR std::size_t real_nodes_per_block   = NodesPerBlock;
+
+   template<class T2>
+   struct rebind
+   {  typedef private_adaptive_pool<T2, NodesPerBlock, MaxFreeBlocks, OverheadPercent, Version> other;  };
+
+   private_adaptive_pool() BOOST_NOEXCEPT_OR_NOTHROW
+   {}
+
+   template<class T2>
+   private_adaptive_pool(const private_adaptive_pool<T2, NodesPerBlock, MaxFreeBlocks, OverheadPercent, Version> &) BOOST_NOEXCEPT_OR_NOTHROW
+   {}
+
+   friend void swap(self_t &, self_t &) BOOST_NOEXCEPT_OR_NOTHROW
+   {}
+
+   //Same rule as the other types: equal only if they are the same object
+   BOOST_CONTAINER_NODISCARD
+   friend bool operator==(const private_adaptive_pool &l, const private_adaptive_pool &r) BOOST_NOEXCEPT_OR_NOTHROW
+   {  return &l == &r;   }
+
+   BOOST_CONTAINER_NODISCARD
+   friend bool operator!=(const private_adaptive_pool &l, const private_adaptive_pool &r) BOOST_NOEXCEPT_OR_NOTHROW
+   {  return &l != &r;   }
+};
+
+#endif   //#ifndef BOOST_CONTAINER_DOXYGEN_INVOKED
 
 }  //namespace container {
 }  //namespace boost {

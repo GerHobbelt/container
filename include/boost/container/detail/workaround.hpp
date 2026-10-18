@@ -19,6 +19,15 @@
 #  pragma once
 #endif
 
+//nvc++/pgc++ and other EDG-based front ends predefine __GNUC__ and are
+//therefore reported as GCC by Boost.Config (BOOST_GCC ends up holding the
+//version of the host GCC whose headers they use). They do not implement
+//GCC's optimization pragmas though, and emit a diagnostic for every one they
+//parse. Guard "#pragma GCC ..." with this macro rather than with BOOST_GCC.
+#if defined(BOOST_GCC) && !defined(__EDG__)
+   #define BOOST_CONTAINER_GCC_PRAGMAS
+#endif
+
 #if    !defined(BOOST_NO_CXX11_RVALUE_REFERENCES) && !defined(BOOST_NO_CXX11_VARIADIC_TEMPLATES)\
     && !defined(BOOST_INTERPROCESS_DISABLE_VARIADIC_TMPL)
    #define BOOST_CONTAINER_PERFECT_FORWARDING
@@ -74,23 +83,15 @@
 #define BOOST_CONTAINER_DOCONLY(T)
 
 /*
-   we need to import/export our code only if the user has specifically
-   asked for it by defining either BOOST_ALL_DYN_LINK if they want all boost
-   libraries to be dynamically linked, or BOOST_CONTAINER_DYN_LINK
-   if they want just this one to be dynamically liked:
+   Until Boost 1.93 this library needed separate compilation, and this macro
+   marked the symbols that the built library exported or imported. Everything
+   is inline now, so it expands to nothing; it is retained, along with
+   BOOST_CONTAINER_DYN_LINK, BOOST_CONTAINER_STATIC_LINK,
+   BOOST_CONTAINER_SOURCE and BOOST_CONTAINER_NO_LIB, only so that code and
+   build systems written against that era keep compiling. Defining any of them
+   now has no effect.
 */
-#if defined(BOOST_ALL_DYN_LINK) || defined(BOOST_CONTAINER_DYN_LINK)
-
-   /* export if this is our own source, otherwise import: */
-   #ifdef BOOST_CONTAINER_SOURCE
-   #  define BOOST_CONTAINER_DECL BOOST_SYMBOL_EXPORT
-   #else
-   #  define BOOST_CONTAINER_DECL BOOST_SYMBOL_IMPORT
-   
-   #endif  /* BOOST_CONTAINER_SOURCE */
-#else
-   #define BOOST_CONTAINER_DECL
-#endif  /* DYN_LINK */
+#define BOOST_CONTAINER_DECL
 
 //#define BOOST_CONTAINER_DISABLE_FORCEINLINE
 
@@ -123,9 +124,15 @@
 #define BOOST_CONTAINER_HAS_FEATURE(feature) __has_feature(feature)
 #endif
 
+
 //Detect address sanitizer
 #if defined(__SANITIZE_ADDRESS__) || BOOST_CONTAINER_HAS_FEATURE(address_sanitizer)
 #define BOOST_CONTAINER_ASAN
+#endif
+
+//Detect thread sanitizer
+#if defined(__SANITIZE_THREAD__) || BOOST_CONTAINER_HAS_FEATURE(thread_sanitizer)
+#define BOOST_CONTAINER_TSAN
 #endif
 
 
@@ -256,7 +263,7 @@ namespace boost {
   // Enable unrolling but let the compiler's cost model choose the factor.
   #define BOOST_CONTAINER_AUTO_UNROLL BOOST_CONTAINER_UNROLL_PRAGMA(clang loop unroll(enable))
 
-#elif defined(BOOST_GCC) && defined(BOOST_GCC_VERSION) && (BOOST_GCC_VERSION >= 150000)
+#elif defined(BOOST_CONTAINER_GCC_PRAGMAS) && defined(BOOST_GCC_VERSION) && (BOOST_GCC_VERSION >= 150000)
   // GCC < 15 emits an unsuppressible "ignoring loop annotation" warning
   // when the optimizer decides it cannot unroll a loop (complex iterators,
   // unknown trip count, etc.). This was fixed in GCC 15.
@@ -281,7 +288,7 @@ namespace boost {
 #endif
 
 #if !defined(NDEBUG)
-#define BOOST_CONTAINER_ASSUME(cond) BOOST_ASSERT(cond)
+#define BOOST_CONTAINER_ASSUME(cond) 
 #elif BOOST_CONTAINER_HAS_BUILTIN(__builtin_assume)
 #define BOOST_CONTAINER_ASSUME(cond) __builtin_assume(cond)
 #elif defined(__GNUC__) || \
@@ -315,6 +322,13 @@ namespace boost {
 //Marks the listed (1-based) pointer parameters as never null, allowing the
 //compiler to assume so at call sites and warn if a null literal is passed.
 //No-op on compilers lacking the attribute (e.g. MSVC).
+//
+//C++03 does not have variadic macros (the compilers that offer the attribute
+//all support them as an extension, but -pedantic triggers the warning).
+#if defined(__GNUC__) || defined(__clang__)
+#  pragma GCC diagnostic push
+#  pragma GCC diagnostic ignored "-Wvariadic-macros"
+#endif
 #if defined(__has_attribute)
 #  if __has_attribute(nonnull)
 #     define BOOST_CONTAINER_NONNULL(...) __attribute__((nonnull(__VA_ARGS__)))
@@ -323,6 +337,9 @@ namespace boost {
 #ifndef BOOST_CONTAINER_NONNULL
 #  define BOOST_CONTAINER_NONNULL(...)
 #endif
+#if defined(__GNUC__) || defined(__clang__)
+#  pragma GCC diagnostic pop
+#endif
 
 //Software prefetch hint for a raw pointer 'p' (no fancy-pointer support).
 //Implemented as a macro rather than a function because of
@@ -330,15 +347,18 @@ namespace boost {
 #if defined(__GNUC__) || defined(__clang__)
 #  define BOOST_CONTAINER_PREFETCH(p) \
       __builtin_prefetch(static_cast<const char*>(static_cast<const void*>(p)))
-#elif defined(_MSC_VER) && (defined(_M_IX86) || defined(_M_X64))
+#elif defined(_MSC_VER) && (defined(_M_IX86) || defined(_M_X64)) && !defined(_M_ARM64EC)
 //_mm_prefetch / _MM_HINT_T0 live in the lightweight SSE header <xmmintrin.h>
 //(shipped with MSVC since VC++ 7.0 / Visual Studio .NET 2002), so there is no
 //need to pull in the heavy <intrin.h> umbrella.
+//ARM64EC is excluded here on purpose: it defines _M_X64 for source
+//compatibility while compiling to ARM64 code, and <xmmintrin.h> refuses to be
+//included. It belongs to the ARM64 branch below, see GitHub #344.
 #  include <xmmintrin.h>
 #  define BOOST_CONTAINER_PREFETCH(p) \
       _mm_prefetch(static_cast<const char*>(static_cast<const void*>(p)), _MM_HINT_T0)
-#elif defined(_MSC_VER) && (defined(_M_ARM) || defined(_M_ARM64))
-//ARM/ARM64 MSVC: __prefetch (PLD on ARM, PRFM PLDL1KEEP on ARM64)
+#elif defined(_MSC_VER) && (defined(_M_ARM) || defined(_M_ARM64) || defined(_M_ARM64EC))
+//ARM/ARM64/ARM64EC MSVC: __prefetch (PLD on ARM, PRFM PLDL1KEEP on ARM64)
 #  define BOOST_CONTAINER_PREFETCH(p) __prefetch(static_cast<const void*>(p))
 #else
 #  define BOOST_CONTAINER_PREFETCH(p) ((void)(p))

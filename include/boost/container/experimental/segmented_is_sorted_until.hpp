@@ -20,7 +20,7 @@
 
 #include <boost/container/detail/config_begin.hpp>
 #include <boost/container/detail/workaround.hpp>
-#include <boost/container/experimental/segmented_iterator_traits.hpp>
+#include <boost/container/experimental/detail/segmented_common_algo.hpp>
 #include <boost/container/detail/iterator.hpp>
 
 namespace boost {
@@ -91,29 +91,32 @@ segduo<SegIter, DeepIt> sorted_until_rec
    segment_iterator       sfirst = traits::segment(first);
    const segment_iterator slast  = traits::segment(last);
 
-   if (sfirst == slast) {
-      const local_iterator ll = traits::local(last);
-      const local_result_t r = (sorted_until_rec)
-         (traits::local(first), ll, comp, prev, is_local_seg_t(), local_cat_t());
-      return segduo<SegIter, DeepIt>(traits::compose(sfirst, r.first), r.second);
-   }
-   else {
-      local_iterator le = traits::end(sfirst);
-      local_result_t r = (sorted_until_rec)
-         (traits::local(first), le, comp, prev, is_local_seg_t(), local_cat_t());
-      if (r.first != le)
-         return segduo<SegIter, DeepIt>(traits::compose(sfirst, r.first), r.second);
+   local_iterator lb = traits::local(first);
 
-      for (++sfirst; sfirst != slast; ++sfirst) {
-         le = traits::end(sfirst);
-         r = (sorted_until_rec)
-            (traits::begin(sfirst), le, comp, r.second, is_local_seg_t(), local_cat_t());
-         if (r.first != le)
+   for (;;) {
+      //Partial segments (first and last) share this call site
+      const bool last_seg = sfirst == slast;
+      const local_iterator le = last_seg ? traits::local(last) : traits::end(sfirst);
+      {
+         const local_result_t r = (sorted_until_rec)
+            (lb, le, comp, prev, is_local_seg_t(), local_cat_t());
+         if (last_seg || r.first != le)
             return segduo<SegIter, DeepIt>(traits::compose(sfirst, r.first), r.second);
+         prev = r.second;
       }
-      r = (sorted_until_rec)
-         (traits::begin(slast), traits::local(last), comp, r.second, is_local_seg_t(), local_cat_t());
-      return segduo<SegIter, DeepIt>(traits::compose(sfirst, r.first), r.second);
+
+      //Middle segments keep their own call site: begin/end both come from
+      //sfirst, so the leaf can be specialised for full segments
+      for (++sfirst; sfirst != slast; ++sfirst) {
+         const local_iterator me = traits::end(sfirst);
+         const local_result_t r = (sorted_until_rec)
+            (traits::begin(sfirst), me, comp, prev, is_local_seg_t(), local_cat_t());
+         if (r.first != me)
+            return segduo<SegIter, DeepIt>(traits::compose(sfirst, r.first), r.second);
+         prev = r.second;
+      }
+
+      lb = traits::begin(sfirst);
    }
 }
 
@@ -126,7 +129,7 @@ template <class FwdIt, class Sent, class Comp>
 inline
 FwdIt segmented_is_sorted_until(FwdIt first, Sent last, Comp comp)
 {
-   if (first == last)
+   if (BOOST_UNLIKELY(first == last))
       return first;
 
    typedef segmented_iterator_traits<FwdIt>           traits;
@@ -147,7 +150,7 @@ template <class FwdIt, class Sent>
 inline
 FwdIt segmented_is_sorted_until(FwdIt first, Sent last)
 {
-   if (first == last)
+   if (BOOST_UNLIKELY(first == last))
       return first;
 
    typedef segmented_iterator_traits<FwdIt>           traits;
