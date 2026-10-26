@@ -296,33 +296,29 @@ struct HINSTANCE__;
 namespace boost {
 namespace container_intermodule_winapi {
 
-//SIZE_T/ULONG_PTR. The exact SPELLING matters here, not just the width:
-//these are extern "C" declarations of entry points Boost.WinAPI also
-//declares (boost/winapi/basic_types.hpp), and one translation unit can see
-//both, so a mismatch is a conflicting declaration of the same function - not
-//merely a different-but-compatible type. On 32-bit Windows SIZE_T is
-//"unsigned long" while std::size_t is "unsigned int": same width, different
-//type. Follow the rule Boost.WinAPI uses, which is also the SDK's.
-#if defined(_WIN64)
+//Exact re-declarations in Cygwin to avoid warnings
+#if defined(__CYGWIN__)
+#  if defined(__x86_64__)   //w32api/_cygwin.h: _WIN64, so ULONG_PTR is unsigned __int64
+typedef unsigned long long uintptr_type;
+#  else
+typedef unsigned long      uintptr_type;
+#  endif
+#  if defined(__LP64__)     //w32api/_mingw.h: __LONG32 is int, so DWORD is unsigned int
+typedef unsigned int       dword_type;
+#  else
+typedef unsigned long      dword_type;
+#  endif
+#elif defined(_WIN64)
 #  if defined(BOOST_HAS_MS_INT64)
 typedef unsigned __int64   uintptr_type;
 #  else
 typedef unsigned long long uintptr_type;
 #  endif
+typedef unsigned long      dword_type;
 #else
-   //ILP32 Windows and LP64 Cygwin alike: ULONG_PTR is "unsigned long" on
-   //both, since Cygwin does not define _WIN64
+   //ILP32 Windows: ULONG_PTR is "unsigned long"
 typedef unsigned long      uintptr_type;
-#endif
-
-//DWORD is always 32 bits. The Windows headers spell it "unsigned long"
-//because "long" is 32 bits on LLP64 (MSVC, MinGW), but Cygwin targets LP64,
-//where "long" is 64 bits and the correct spelling is "unsigned int". This is
-//the same distinction Cygwin's own w32api draws with its __LONG32 macro.
-#if defined(__LP64__) && !defined(_WIN64)
-typedef unsigned int   dword_type;
-#else
-typedef unsigned long  dword_type;
+typedef unsigned long      dword_type;
 #endif
 typedef void *         handle_type;
 typedef int            bool_type;
@@ -544,41 +540,69 @@ BOOST_CONTAINER_STATIC_ASSERT(sizeof(intermodule_u32) == 4u);
 //////////////////////////////////////////////////////////////////////////////
 //
 // The key is the signature of a function template instantiated on the
-// T/Options pair, as the compiler itself spells it. It therefore names both
-// types, so the identity of an instance is the T/Options pair - the very
-// same identity the other backend gets for free, where the shared storage
-// is a static member of intermodule_globals_impl<T, Options> and the linker
-// unifies it under a name that mangles both arguments.
+// T/Options pair.
+//
+// The shared storage is a static member of intermodule_globals_impl<T, Options>.
 //
 // The front end produces the signature while parsing: unlike
 // typeid(T).name() it needs no runtime type information, so a module built
 // with RTTI disabled and one built with RTTI enabled compute the very same
 // key and do rendezvous together.
 //
-// Records carry their key inline and sized, so a long signature costs a few
-// bytes of arena and nothing else - no truncation, and no hashing of the
-// name into the identity (the 32-bit hash below only picks a bucket;
-// identity is always the full string). Like typeid names, a signature is
-// only guaranteed to agree between modules built by the same compiler,
-// which is all this backend needs.
+// Records store their key inline and sized the 32-bit hash below only picks
+// bucket; identity is always the full string.
+//
+// Is possible, modules built by different compilers must compute the same
+// key when the compilers are ABI compatible .
+//
+// Options can provide its own key, the same for every compiler:
+//
+//   struct my_options
+//   {  static const char *key() {  return "my_library.my_globals";  }  };
+//
+// The key must identify the T/Options pair: two pairs must not use the same
+// key.
 
-//The intrinsic has to name the template arguments, which __func__ and
-//__FUNCTION__ do not: they name the function alone, and every instantiation
-//would then share a single key. Take the two that do, directly rather than
-//through BOOST_CURRENT_FUNCTION, whose remaining fallbacks are exactly
-//those unusable spellings. Between them they cover every compiler that
-//targets the platforms this backend is compiled for: __PRETTY_FUNCTION__ on
-//the GCC-compatible front ends (GCC, Clang, clang-cl, MinGW, Intel and the
-//EDG-based ones, which all define __GNUC__ or __clang__) and __FUNCSIG__ on
-//MSVC and the front ends that emulate it.
-#if defined(__GNUC__) || defined(__clang__)
+#if defined(_MSC_VER)
+#  define BOOST_CONTAINER_INTERMODULE_KEY_SIGNATURE __FUNCDNAME__
+#elif defined(__GNUC__) || defined(__clang__)
 #  define BOOST_CONTAINER_INTERMODULE_KEY_SIGNATURE __PRETTY_FUNCTION__
-#elif defined(_MSC_VER)
-#  define BOOST_CONTAINER_INTERMODULE_KEY_SIGNATURE __FUNCSIG__
 #endif
 
+//True if Options value a static member function "const char *key()"
+template<class Options>
+struct intermodule_opt_key
+{
+   typedef char one_type;
+   struct two_type { char dummy[2]; };
+   template<const char *(*)()> struct fn_arg {};
+
+   template<class U> static one_type test(fn_arg<&U::key> *);
+   template<class U> static two_type test(...);
+
+   static const bool value = sizeof(test<Options>(0)) == sizeof(one_type);
+};
+
+//void is the empty option set
+template<>
+struct intermodule_opt_key<void>
+{
+   static const bool value = false;
+};
+
+template<bool HasKey>
+struct intermodule_key_tag {};
+
+//The key that Options provides
 template<class T, class Options>
-BOOST_CONTAINER_FORCEINLINE const char *intermodule_rendezvous_key()
+BOOST_CONTAINER_FORCEINLINE const char *intermodule_rendezvous_key(intermodule_key_tag<true>)
+{
+   return Options::key();
+}
+
+//The signature of this function, as the compiler spells it
+template<class T, class Options>
+BOOST_CONTAINER_FORCEINLINE const char *intermodule_rendezvous_key(intermodule_key_tag<false>)
 {
    #if defined(BOOST_CONTAINER_INTERMODULE_KEY_SIGNATURE)
    return BOOST_CONTAINER_INTERMODULE_KEY_SIGNATURE;
@@ -587,18 +611,24 @@ BOOST_CONTAINER_FORCEINLINE const char *intermodule_rendezvous_key()
    BOOST_CONTAINER_STATIC_ASSERT_MSG(sizeof(T) == 0
       , "Boost.Container: no intrinsic naming the template arguments of the "
         "current function is known for this compiler, so intermodule globals "
-        "cannot be keyed");
+        "cannot be keyed. Provide a key in the options (see above)");
    return 0;
    #endif
+}
+
+template<class T, class Options>
+BOOST_CONTAINER_FORCEINLINE const char *intermodule_rendezvous_key()
+{
+   return (intermodule_rendezvous_key<T, Options>)
+      (intermodule_key_tag<intermodule_opt_key<Options>::value>());
 }
 
 struct intermodule_registry_header
 {
    //Guards the table itself: the magic, the linear-hashing state, the arena
-   //bump pointer and the bucket array, that is every field below. It does
-   //NOT guard a record's refcount or its object; each record carries its own
-   //lock for that, so that a T constructor may use another intermodule
-   //global. Order is always this lock first, then a record lock.
+   //bump pointer and the bucket array. It does NOT guard a record's refcount
+   // r object; each record has its own lock for that, so that a T constructor
+   //can use another intermodule global.
    spin_mutex lock;
    intermodule_u32    magic;
    //Linear hashing state, in the two-variable form Boost.Intrusive uses:
@@ -835,7 +865,8 @@ inline intermodule_registry_header *intermodule_map_registry_section(void *&sect
 //  +--------------------------------------------------------------------+
 //
 //The bootstrap lock guards the bootstrap fields; the registry's own lock
-//guards the table. Order: bootstrap lock, table lock, record lock.
+//guards the table. The table lock is taken with the bootstrap lock held, and
+//both are released before a record lock is taken.
 //
 //The module that creates the registry keeps one handle to the section for
 //the life of the process (the other modules close theirs at once), and
@@ -1025,13 +1056,11 @@ struct intermodule_globals_impl
 
       T *const obj = (T *)(void *)((char *)hdr + r->obj_offset);
 
-      //Hand over from the table lock to this entry's own lock, taking the
-      //second while still holding the first so no one can slip in between.
-      //T's constructor then runs holding only the entry lock, which is what
-      //lets it use another intermodule global: that nested attach() needs
-      //the table lock and a different entry lock, and gets both.
-      r->lock.lock();
+      //Release the table lock before taking entry's lock to avoid deadlocks.
+      //Releasing is safe because records never move,  r remains valid.
+      //The refcount, under the entry lock, decides which thread constructs T.
       table_lock.unlock();
+      r->lock.lock();
 
       const bool constructed_here = 0 == r->refcount;
       if(constructed_here){

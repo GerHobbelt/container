@@ -1152,6 +1152,63 @@ bool test_huge_expansion_requests()
    return 0 != h.all_deallocated();
 }
 
+//A block above the mmap threshold, aligned or not, shrinks in place only when
+//do_commit is true. The query and the shrink give the same size, the size is
+//the usable size of the block after the shrink, and it is at least minbytes.
+bool test_mmapped_shrink()
+{
+   h.check();
+   const std::size_t block_size     = 1024u*1024u;
+   const std::size_t min_size       = 100u*1024u;
+   const std::size_t alignments[]   = { 0u, 4096u, 65536u };
+   const char        fill_value     = 2;
+
+   for(std::size_t a = 0; a != sizeof(alignments)/sizeof(alignments[0]); ++a){
+      const std::size_t alignment = alignments[a];
+      char *const p = static_cast<char*>
+         (alignment ? h.allocate_aligned(alignment, block_size) : h.allocate(block_size));
+      if(!p)
+         return false;
+      const std::size_t old_usable = dlmalloc::usable_size(p);
+      std::memset(p, fill_value, old_usable);
+
+      //A query does not change the block
+      std::size_t try_received = 0;
+      const bool try_ok = h.shrink(p, min_size, old_usable, &try_received, false);
+      if(dlmalloc::usable_size(p) != old_usable)
+         return false;
+
+      std::size_t received = 0;
+      const bool ok = h.shrink(p, min_size, old_usable, &received, true);
+      if(ok != try_ok)
+         return false;
+      if(ok){
+         if(received != try_received || received < min_size || received > old_usable)
+            return false;
+         if(dlmalloc::usable_size(p) != received)
+            return false;
+      }
+      else if(dlmalloc::usable_size(p) != old_usable){
+         return false;
+      }
+
+      //The block keeps its alignment and its first bytes, and all its usable
+      //bytes can be written
+      if(alignment && (reinterpret_cast<std::size_t>(p) % alignment) != 0u)
+         return false;
+      const std::size_t new_usable = dlmalloc::usable_size(p);
+      for(std::size_t i = 0; i != new_usable; ++i){
+         if(p[i] != fill_value)
+            return false;
+      }
+      std::memset(p, 0, new_usable);
+      h.check();
+      h.deallocate(p);
+   }
+   h.check();
+   return 0 != h.all_deallocated();
+}
+
 //multialloc_nodes_aligned and multialloc_arrays_aligned return blocks aligned to
 //the requested alignment, also for alignments bigger than malloc_alignment
 bool test_multialloc_aligned()
@@ -1200,8 +1257,13 @@ bool test_multialloc_aligned()
             std::size_t n = 0;
             for(it = ch.begin(); !dlmalloc::memchain::is_end(it); it.next())
                ptrs[n++] = it.addr();
-            for(std::size_t i = 1; i != n; ++i)
-               std::memset(ptrs[i], int(i), dlmalloc::usable_size(ptrs[i]));
+            for(std::size_t i = 1; i != n; ++i){
+               //Old GCC + glibc fortify sees a constant zero length in the
+               //inlined usable_size null path: skip it explicitly
+               const std::size_t usable = dlmalloc::usable_size(ptrs[i]);
+               if(usable)
+                  std::memset(ptrs[i], int(i), usable);
+            }
             for(std::size_t i = 0; i != n; ++i)
                h.deallocate(ptrs[i]);
             h.check();
@@ -1287,6 +1349,15 @@ bool test_all_allocation()
 
    if(!test_huge_expansion_requests()){
       std::cout << "test_huge_expansion_requests failed"
+                << std::endl;
+      return false;
+   }
+
+   std::cout << "Starting test_mmapped_shrink"
+             << std::endl;
+
+   if(!test_mmapped_shrink()){
+      std::cout << "test_mmapped_shrink failed"
                 << std::endl;
       return false;
    }
