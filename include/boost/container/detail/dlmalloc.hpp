@@ -42,7 +42,9 @@
 //_BitScanForward, _BitScanReverse
 #  include <intrin.h>
 #endif
-#if !defined(BOOST_WINDOWS)
+#if defined(BOOST_WINDOWS)
+#  include <boost/container/detail/winapi.hpp>
+#else
 #  include <sys/mman.h>
 #  include <unistd.h>
 #endif
@@ -73,62 +75,7 @@
 #  include <sys/single_threaded.h>
 #endif
 
-#if defined(BOOST_WINDOWS)
-
-#if defined(_WIN64) || defined(__LP64__)
-typedef unsigned __int64 dl_win_size_t;   //matches SIZE_T
-#else
-typedef unsigned long    dl_win_size_t;
-#endif
-
-#ifdef BOOST_USE_WINDOWS_H
-#  include <windows.h>
-#else
-struct _MEMORY_BASIC_INFORMATION;
-struct _SYSTEM_INFO;
-
-extern "C" {
-__declspec(dllimport) void * __stdcall VirtualAlloc
-   (void *lpAddress, dl_win_size_t dwSize, unsigned long flAllocationType, unsigned long flProtect);
-__declspec(dllimport) int __stdcall VirtualFree
-   (void *lpAddress, dl_win_size_t dwSize, unsigned long dwFreeType);
-__declspec(dllimport) dl_win_size_t __stdcall VirtualQuery
-   (const void *lpAddress, ::_MEMORY_BASIC_INFORMATION *lpBuffer, dl_win_size_t dwLength);
-__declspec(dllimport) void __stdcall GetSystemInfo(::_SYSTEM_INFO *lpSystemInfo);
-}  //extern "C"
-#endif //BOOST_USE_WINDOWS_H
-
-//Layout-compatible with MEMORY_BASIC_INFORMATION and SYSTEM_INFO, so the
-//real definitions are never needed.
-struct dl_win_memory_basic_information
-{
-   void          *BaseAddress;
-   void          *AllocationBase;
-   unsigned long  AllocationProtect;
-#if defined(_WIN64)
-   unsigned short PartitionId;
-#endif
-   dl_win_size_t RegionSize;
-   unsigned long  State;
-   unsigned long  Protect;
-   unsigned long  Type;
-};
-
-struct dl_win_system_info
-{
-   unsigned long  dwOemId;
-   unsigned long  dwPageSize;
-   void          *lpMinimumApplicationAddress;
-   void          *lpMaximumApplicationAddress;
-   dl_win_size_t dwActiveProcessorMask;
-   unsigned long  dwNumberOfProcessors;
-   unsigned long  dwProcessorType;
-   unsigned long  dwAllocationGranularity;
-   unsigned short wProcessorLevel;
-   unsigned short wProcessorRevision;
-};
-
-#else    //BOOST_WINDOWS
+#if !defined(BOOST_WINDOWS)
 
 #if defined(MAP_ANONYMOUS)
 #  define BOOST_CONTAINER_DL_MAP_ANONYMOUS MAP_ANONYMOUS
@@ -136,7 +83,7 @@ struct dl_win_system_info
 #  define BOOST_CONTAINER_DL_MAP_ANONYMOUS MAP_ANON
 #endif
 
-#endif   //BOOST_WINDOWS
+#endif   //!BOOST_WINDOWS
 
 namespace boost {
 namespace container {
@@ -1800,6 +1747,9 @@ class basic_dlmalloc
             }
          }
          postaction:
+         //The documentation guarantees that received_size will get 0 on failure
+         if(!ret.first)
+            *received_size = 0;
          postaction(ms);
       }
       return ret;
@@ -2018,17 +1968,9 @@ class basic_dlmalloc
    //Zero when use_locks is off
    static const size_type use_lock_bit          = (use_locks ? 2U : 0U);
 
-   #if defined(BOOST_WINDOWS)
-   //VirtualAlloc()/VirtualFree() flag words - unsigned long is what those
-   //two APIs actually take (flAllocationType, flProtect, dwFreeType), and
-   //size_type would just be silently truncated to it on every call anyway.
-   static const unsigned long dl_mem_commit     = 0x1000;
-   static const unsigned long dl_mem_reserve    = 0x2000;
-   static const unsigned long dl_mem_release    = 0x8000;
-   static const unsigned long dl_mem_top_down   = 0x100000;
-   static const unsigned long dl_page_readwrite = 0x04;
-   #else
+   #if !defined(BOOST_WINDOWS)
    //mmap() flag words - int is what ::mmap()'s prot/flags parameters take.
+   //The VirtualAlloc()/VirtualFree() flags are in winapi.hpp.
    static const int mmap_prot  = (PROT_READ|PROT_WRITE);
    static const int mmap_flags = (MAP_PRIVATE|BOOST_CONTAINER_DL_MAP_ANONYMOUS);
    #endif
@@ -2073,15 +2015,17 @@ class basic_dlmalloc
    //win32mmap / win32direct_mmap / win32munmap, unchanged in substance.
    static void *win32mmap(size_type size) BOOST_NOEXCEPT
    {
-      void *const ptr = VirtualAlloc(0, size, dl_mem_reserve|dl_mem_commit, dl_page_readwrite);
+      void *const ptr = VirtualAlloc
+         (0, size, winapi::mem_reserve_c|winapi::mem_commit_c, winapi::page_readwrite_c);
       return (ptr != 0) ? ptr : mfail();
    }
 
    //MEM_TOP_DOWN for direct maps, to keep them out of the way of the heap
    static void *win32direct_mmap(size_type size) BOOST_NOEXCEPT
    {
-      void *const ptr = VirtualAlloc(0, size, dl_mem_reserve|dl_mem_commit|dl_mem_top_down,
-                                     dl_page_readwrite);
+      void *const ptr = VirtualAlloc
+         ( 0, size, winapi::mem_reserve_c|winapi::mem_commit_c|winapi::mem_top_down_c
+         , winapi::page_readwrite_c);
       return (ptr != 0) ? ptr : mfail();
    }
 
@@ -2089,16 +2033,16 @@ class basic_dlmalloc
    //may be releasing part of a run the heap coalesced, so walk the regions.
    static int win32munmap(void *ptr, size_type size) BOOST_NOEXCEPT
    {
-      ::dl_win_memory_basic_information minfo;
+      winapi::memory_basic_information minfo;
       char *cptr = (char *)ptr;
       while(size){
          if(VirtualQuery(cptr, (::_MEMORY_BASIC_INFORMATION *)&minfo,
-                         (dl_win_size_t)sizeof(minfo)) == 0)
+                         (winapi::uintptr_type)sizeof(minfo)) == 0)
             return -1;
          if(minfo.BaseAddress != cptr || minfo.AllocationBase != cptr ||
-            minfo.State != dl_mem_commit || minfo.RegionSize > size)
+            minfo.State != winapi::mem_commit_c || minfo.RegionSize > size)
             return -1;
-         if(VirtualFree(cptr, 0, dl_mem_release) == 0)
+         if(VirtualFree(cptr, 0, winapi::mem_release_c) == 0)
             return -1;
          cptr += minfo.RegionSize;
          size -= minfo.RegionSize;
@@ -2106,8 +2050,8 @@ class basic_dlmalloc
       return 0;
    }
 
-   //GetSystemInfo without <windows.h>: the caller passes the stand-in above.
-   static void dl_get_system_info(::dl_win_system_info *si) BOOST_NOEXCEPT
+   //GetSystemInfo without <windows.h>: the caller passes the stand-in of winapi.hpp
+   static void dl_get_system_info(winapi::system_info *si) BOOST_NOEXCEPT
    {  GetSystemInfo((::_SYSTEM_INFO *)si);  }
 
    #endif   //BOOST_WINDOWS
@@ -5397,19 +5341,16 @@ class basic_dlmalloc
          //   return 0;
          //}
          //
-         // We reach here only if forward expansion fails
-         if(!(command & expand_bwd) || pinuse(oldp)){
+         // We reach here only if forward expansion fails.
+         //A mmapped chunk has no neighbours: its head has no in-use bits, so
+         //pinuse() is 0, and prev_foot is the offset from the start of the
+         //mapping (the alignment slack), not the size of a free chunk.
+         if(!(command & expand_bwd) || is_mmapped(oldp) || pinuse(oldp)){
             return 0;
          }
          {
             size_type prevsize = oldp->prev_foot;
-            if ((prevsize & use_mmap_bit) != 0){
-               //Return failure the previous chunk was mmapped.
-               //mremap does not allow expanding to a fixed address (MREMAP_MAYMOVE) without
-               //copying (MREMAP_MAYMOVE must be also set).
-               return 0;
-            }
-            else {
+            {
                mchunkptr prev = chunk_minus_offset(oldp, prevsize);
                size_type dsize = oldsize + prevsize;
                size_type needs_backwards_lcmed;
@@ -5440,9 +5381,11 @@ class basic_dlmalloc
                   usage_error_action(m, oldp);
                   return 0;
                }
-               // Check if previous block has enough size
-               else if(prevsize < needs_backwards_lcmed){
-                  // preferred size?
+               //Calculate if we can take the previous chunk. Two options:
+               //a) The previous chunk is split if there is room
+               //b) It is merged whole if its size is a multiple of lcm
+               const bool split_prev = prevsize >= (needs_backwards_lcmed + min_chunk_size);
+               if(!split_prev && (prevsize < needs_backwards_lcmed || (prevsize % lcm) != 0)){
                   return 0;
                }
                // Both halves are available, so now take the forward space. Sized
@@ -5457,7 +5400,7 @@ class basic_dlmalloc
                   dsize = oldsize + prevsize;
                }
                // We need a minimum size to split the previous one
-               if(prevsize >= (needs_backwards_lcmed + min_chunk_size)){
+               if(split_prev){
                   mchunkptr r  = chunk_minus_offset(oldp, needs_backwards_lcmed);
                   size_type rsize = oldsize + needs_backwards_lcmed;
                   size_type newprevsize = dsize - rsize;
@@ -5480,9 +5423,7 @@ class basic_dlmalloc
                   *received_size = chunksize(r) - overhead_for(r);
                   return chunk2mem(r);
                }
-               // Check if there is no place to create a new block and
-               //the whole new block is multiple of the backwards expansion multiple
-               else if(prevsize >= needs_backwards_lcmed && !(prevsize % lcm)) {
+               else{
                   // Just merge the whole previous block
                   // prevsize is multiple of lcm (and backwards_multiple)
                   *received_size  += prevsize;
@@ -5497,12 +5438,6 @@ class basic_dlmalloc
                   set_inuse(m, prev, dsize);
                   check_malloced_chunk(chunk2mem(prev), dsize);
                   return chunk2mem(prev);
-               }
-               else{
-                  // Previous block was big enough but there is no room
-                  //to create an empty block and taking the whole block does
-                  //not fulfill alignment requirements
-                  return 0;
                }
             }
          }
@@ -5570,6 +5505,7 @@ class basic_dlmalloc
       #else  //#if BOOST_CONTAINER_DL_MREMAP
       (void)m;
       (void)oldp;
+      (void)oldsize;
       (void)nbmin;
       (void)nbmax;
       (void)received_size;
@@ -6187,7 +6123,7 @@ class basic_dlmalloc
       #if defined(BOOST_WINDOWS)
       {
          //dwPageSize and dwAllocationGranularity, without <windows.h>
-         ::dl_win_system_info si;
+         winapi::system_info si;
          dl_get_system_info(&si);
          psize = si.dwPageSize;
          gsize = ((default_granularity != 0) ? default_granularity
