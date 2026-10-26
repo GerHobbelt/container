@@ -14,9 +14,13 @@
 #include <boost/container/detail/workaround.hpp>
 #include <boost/container/detail/type_traits.hpp>   //alignment_of
 #include <boost/move/detail/iterator_to_raw_pointer.hpp>
+#include <boost/move/detail/to_raw_pointer.hpp>
+#include <boost/container/throw_exception.hpp>      //bad_alloc_t
+#include <boost/container/detail/multiallocation_chain.hpp>
 
 #include <cstddef>
 #include <cstdio>
+#include <iterator>
 
 //Exercises the "extended" (Version == 2) allocator interface: the node and
 //chain operations containers use for bulk allocation. Containers reach these
@@ -138,6 +142,38 @@ int check_blocks_are_usable(Allocator &a, std::size_t n, const char *alloc)
    return err;
 }
 
+//The iterator of the type-erased chain: its values are the addresses of the
+//blocks, returned by value. That makes it a C++17 input iterator and a
+//C++20 forward iterator. The typed chain of an allocator returns T&, so it
+//is a forward iterator in both.
+template<class Allocator>
+void check_chain_iterator_types()
+{
+   typedef typename Allocator::value_type                      value_type;
+   typedef typename Allocator::multiallocation_chain::iterator typed_it;
+   typedef boost::container::dtl::basic_multiallocation_chain<void*> void_chain_t;
+   typedef typename void_chain_t::iterator                     void_it;
+   using boost::container::dtl::is_same;
+
+   BOOST_CONTAINER_STATIC_ASSERT((is_same<typename void_it::value_type, void*>::value));
+   BOOST_CONTAINER_STATIC_ASSERT((is_same<typename void_it::reference,  void*>::value));
+   BOOST_CONTAINER_STATIC_ASSERT((is_same<typename void_it::pointer,    void*>::value));
+   BOOST_CONTAINER_STATIC_ASSERT((is_same<typename void_it::iterator_category, std::input_iterator_tag>::value));
+   BOOST_CONTAINER_STATIC_ASSERT((is_same<typename void_it::iterator_concept, std::forward_iterator_tag>::value));
+
+   BOOST_CONTAINER_STATIC_ASSERT((is_same<typename typed_it::value_type, value_type>::value));
+   BOOST_CONTAINER_STATIC_ASSERT((is_same<typename typed_it::reference,  value_type&>::value));
+   BOOST_CONTAINER_STATIC_ASSERT((is_same<typename typed_it::iterator_category, std::forward_iterator_tag>::value));
+   BOOST_CONTAINER_STATIC_ASSERT((is_same<typename typed_it::iterator_concept, std::forward_iterator_tag>::value));
+
+   #if defined(__cpp_lib_ranges)
+   static_assert(std::forward_iterator<void_it>, "void chain iterator is a C++20 forward iterator");
+   static_assert(!std::sized_sentinel_for<void_it, void_it>, "distance is not constant time");
+   static_assert(std::forward_iterator<typed_it>, "typed chain iterator is a C++20 forward iterator");
+   static_assert(!std::sized_sentinel_for<typed_it, typed_it>, "distance is not constant time");
+   #endif
+}
+
 //!Test allocate_one/deallocate_one, allocate_individual/deallocate_individual,
 //!both allocate_many overloads with deallocate_many, and size().
 template<class Allocator>
@@ -147,6 +183,8 @@ int extended_allocator_test(const char *alloc_name)
    typedef typename Allocator::pointer               pointer;
    typedef typename Allocator::size_type             size_type;
    typedef typename Allocator::multiallocation_chain chain_t;
+
+   check_chain_iterator_types<Allocator>();
 
    Allocator a;
 
@@ -205,7 +243,7 @@ int extended_allocator_test(const char *alloc_name)
       a.deallocate_many(chain);
    }
 
-   //size(): reports the usable bytes of a block obtained from allocate()
+   //size(): the number of objects that a block obtained from allocate() can hold
    {
       const size_type k = 4;
       pointer p = a.allocate(k);
@@ -213,15 +251,35 @@ int extended_allocator_test(const char *alloc_name)
          std::printf("  %s: allocate(4) returned null\n", alloc_name);
          return 1;
       }
-      if(a.size(p) < k*sizeof(value_type)){
-         std::printf("  %s: size() reports %u bytes, less than the %u requested\n", alloc_name,
-                     static_cast<unsigned>(a.size(p)),
-                     static_cast<unsigned>(k*sizeof(value_type)));
+      if(a.size(p) < k){
+         std::printf("  %s: size() reports %u objects, less than the %u requested\n", alloc_name,
+                     static_cast<unsigned>(a.size(p)), static_cast<unsigned>(k));
          a.deallocate(p, k);
          return 1;
       }
       a.deallocate(p, k);
    }
+
+   //allocate_many(elem_size, n_elements) with elem_size*sizeof(T) bigger than
+   //size_type: throws bad_alloc, instead of allocating small blocks
+   #ifndef BOOST_NO_EXCEPTIONS
+   if(sizeof(value_type) > 1u){
+      chain_t chain;
+      bool thrown = false;
+      try{
+         a.allocate_many(size_type(size_type(-1)/sizeof(value_type) + 1u), 2u, chain);
+      }
+      catch(const boost::container::bad_alloc_t &){
+         thrown = true;
+      }
+      if(!thrown || !chain.empty()){
+         std::printf("  %s: allocate_many with an overflowing elem_size did not throw bad_alloc\n", alloc_name);
+         if(!chain.empty())
+            a.deallocate_many(chain);
+         return 1;
+      }
+   }
+   #endif   //BOOST_NO_EXCEPTIONS
 
    return 0;
 }

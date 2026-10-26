@@ -29,11 +29,14 @@
 #include <boost/container/detail/placement_new.hpp>
 #include <boost/container/detail/iterator.hpp>
 // intrusive
-#include <boost/intrusive/slist.hpp>
+#include <boost/intrusive/detail/slist_node.hpp>
+#include <boost/intrusive/linear_slist_algorithms.hpp>
 #include <boost/intrusive/pointer_traits.hpp>
 #include <boost/intrusive/detail/twin.hpp>
 // move
 #include <boost/move/utility_core.hpp>
+#include <boost/move/adl_move_swap.hpp>
+#include <boost/assert.hpp>
 #include <boost/move/detail/iterator_to_raw_pointer.hpp>
 
 
@@ -41,114 +44,205 @@ namespace boost {
 namespace container {
 namespace dtl {
 
+//////////////////////////////////////////////////////////////////////////////
+//
+//    basic_multiallocation_chain
+//
+//////////////////////////////////////////////////////////////////////////////
+
 template<class VoidPointer>
 class basic_multiallocation_chain
 {
    private:
-   typedef bi::slist_base_hook<bi::void_pointer<VoidPointer>
-                        ,bi::link_mode<bi::normal_link>
-                        > node;
+   typedef bi::slist_node_traits<VoidPointer>               node_traits;
+   typedef bi::linear_slist_algorithms<node_traits>         algo;
+   typedef typename node_traits::node                       node;
+   typedef typename node_traits::node_ptr                   node_ptr;
+   typedef typename boost::intrusive::
+      pointer_traits<node_ptr>                              node_ptr_traits;
 
    typedef typename boost::intrusive::pointer_traits
       <VoidPointer>::template rebind_pointer<char>::type    char_ptr;
    typedef typename boost::intrusive::
       pointer_traits<char_ptr>::difference_type             difference_type;
 
-   typedef bi::slist< node
-                    , bi::linear<true>
-                    , bi::cache_last<true>
-                    , bi::size_type<typename boost::container::dtl::make_unsigned<difference_type>::type>
-                    > slist_impl_t;
-   slist_impl_t slist_impl_;
+   public:
+   typedef VoidPointer                                      void_pointer;
+   typedef typename boost::container::dtl::
+      make_unsigned<difference_type>::type                  size_type;
+   typedef boost::intrusive::twin<void_pointer>             pointer_pair;
 
-   typedef typename boost::intrusive::pointer_traits
-      <VoidPointer>::template rebind_pointer<node>::type    node_ptr;
-   typedef typename boost::intrusive::
-      pointer_traits<node_ptr>                              node_ptr_traits;
+   //Iterator over the blocks. The chain is type-erased: the values of the
+   //sequence are the addresses of the blocks, so *it returns the address
+   class iterator
+   {
+      friend class basic_multiallocation_chain;
 
-   static node & to_node(const VoidPointer &p)
-   {  return *static_cast<node*>(static_cast<void*>(boost::movelib::to_raw_pointer(p)));  }
+      public:
+      typedef std::input_iterator_tag     iterator_category;
+      typedef std::forward_iterator_tag   iterator_concept;
+      typedef void_pointer                value_type;
+      typedef typename basic_multiallocation_chain::difference_type difference_type;
+      typedef void_pointer                pointer;
+      typedef void_pointer                reference;
 
-   static VoidPointer from_node(node &n)
-   {  return node_ptr_traits::pointer_to(n);  }
+      iterator() : m_p() {}
 
-   static node_ptr to_node_ptr(const VoidPointer &p)
-   {  return node_ptr_traits::static_cast_from(p);   }
+      void_pointer operator*() const    {  return void_pointer(m_p);  }
+      void_pointer operator->() const   {  return void_pointer(m_p);  }
+
+      iterator &operator++()        {  m_p = node_traits::get_next(m_p); return *this;  }
+      iterator operator++(int)      {  iterator tmp(*this); ++*this; return tmp;  }
+
+      friend bool operator==(const iterator &a, const iterator &b) {  return a.m_p == b.m_p;  }
+      friend bool operator!=(const iterator &a, const iterator &b) {  return a.m_p != b.m_p;  }
+
+      private:
+      explicit iterator(const node_ptr &p) : m_p(p) {}
+
+      node_ptr m_p;
+   };
+
+   private:
+   //The header: its link is the first block. last_ points to it when empty.
+   node        root_;
+   node_ptr    last_;
+   size_type   size_;
 
    BOOST_MOVABLE_BUT_NOT_COPYABLE(basic_multiallocation_chain)
 
+   node_ptr root_ptr()
+   {  return node_ptr_traits::pointer_to(root_);  }
+
+   static node_ptr to_node_ptr(const void_pointer &p)
+   {  return node_ptr_traits::static_cast_from(p);   }
+
+   static void_pointer from_node_ptr(const node_ptr &p)
+   {  return void_pointer(p);   }
+
+   void init()
+   {
+      algo::init_header(this->root_ptr());
+      last_ = this->root_ptr();
+      size_ = 0u;
+   }
+
+   //Links [b, before_e], already linked between them, after after_this
+   void priv_link_after(const node_ptr &after_this, const node_ptr &b, const node_ptr &before_e, size_type n)
+   {
+      algo::incorporate_after(after_this, b, before_e);
+      if(after_this == last_)
+         last_ = before_e;
+      size_ += n;
+   }
+
    public:
-
-   typedef VoidPointer                       void_pointer;
-   typedef typename slist_impl_t::iterator   iterator;
-   typedef typename slist_impl_t::size_type  size_type;
-   typedef boost::intrusive::twin<void_pointer> pointer_pair;
-
    basic_multiallocation_chain()
-      :  slist_impl_()
-   {}
+   {  this->init();  }
 
    basic_multiallocation_chain(const void_pointer &b, const void_pointer &before_e, size_type n)
-      :  slist_impl_(to_node_ptr(b), to_node_ptr(before_e), n)
-   {}
+   {
+      this->init();
+      if(n){
+         node_traits::set_next(to_node_ptr(before_e), node_ptr());
+         this->priv_link_after(this->root_ptr(), to_node_ptr(b), to_node_ptr(before_e), n);
+      }
+   }
 
    basic_multiallocation_chain(BOOST_RV_REF(basic_multiallocation_chain) other)
-      :  slist_impl_(::boost::move(other.slist_impl_))
-   {}
+   {
+      this->init();
+      this->swap(other);
+   }
 
    basic_multiallocation_chain& operator=(BOOST_RV_REF(basic_multiallocation_chain) other)
    {
-      slist_impl_ = ::boost::move(other.slist_impl_);
+      this->clear();
+      this->swap(other);
       return *this;
    }
 
    bool empty() const
-   {  return slist_impl_.empty(); }
+   {  return !size_; }
 
    size_type size() const
-   {  return slist_impl_.size();  }
+   {  return size_;  }
 
    iterator before_begin()
-   {  return slist_impl_.before_begin(); }
+   {  return iterator(this->root_ptr()); }
 
    iterator begin()
-   {  return slist_impl_.begin(); }
+   {  return iterator(node_traits::get_next(this->root_ptr())); }
 
    iterator end()
-   {  return slist_impl_.end(); }
+   {  return iterator(); }
 
    iterator last()
-   {  return slist_impl_.last(); }
+   {  return iterator(last_); }
 
    void clear()
-   {  slist_impl_.clear(); }
+   {  this->init(); }
 
    iterator insert_after(iterator it, void_pointer m)
-   {  return slist_impl_.insert_after(it, to_node(m));   }
+   {
+      const node_ptr n = to_node_ptr(m);
+      algo::link_after(it.m_p, n);
+      if(it.m_p == last_)
+         last_ = n;
+      ++size_;
+      return iterator(n);
+   }
 
    void push_front(const void_pointer &m)
-   {  return slist_impl_.push_front(to_node(m));  }
+   {  this->insert_after(this->before_begin(), m);  }
 
    void push_back(const void_pointer &m)
-   {  return slist_impl_.push_back(to_node(m));   }
+   {  this->insert_after(this->last(), m);  }
 
    void_pointer pop_front()
    {
-      node & n = slist_impl_.front();
-      void_pointer ret = from_node(n);
-      slist_impl_.pop_front();
-      return ret;
+      BOOST_ASSERT(!this->empty());
+      const node_ptr root = this->root_ptr();
+      const node_ptr f = node_traits::get_next(root);
+      algo::unlink_after(root);
+      if(last_ == f)
+         last_ = root;
+      --size_;
+      return from_node_ptr(f);
    }
 
+   //Moves the n blocks (before_b, before_e] of x after after_this
    void splice_after(iterator after_this, basic_multiallocation_chain &x, iterator before_b, iterator before_e, size_type n)
-   {  slist_impl_.splice_after(after_this, x.slist_impl_, before_b, before_e, n);   }
+   {
+      if(!n)
+         return;
+      const node_ptr bb = before_b.m_p;
+      const node_ptr be = before_e.m_p;
+      const node_ptr p  = after_this.m_p;
+      if(x.last_ == be)
+         x.last_ = bb;
+      x.size_ -= n;
+      algo::transfer_after(p, bb, be);
+      if(p == last_)
+         last_ = be;
+      size_ += n;
+   }
 
    void splice_after(iterator after_this, basic_multiallocation_chain &x)
-   {  slist_impl_.splice_after(after_this, x.slist_impl_);   }
+   {  this->splice_after(after_this, x, x.before_begin(), x.last(), x.size());   }
 
+   //Unlinks the n blocks (before_b, e)
    void erase_after(iterator before_b, iterator e, size_type n)
-   {  slist_impl_.erase_after(before_b, e, n);   }
+   {
+      const node_ptr bb = before_b.m_p;
+      algo::unlink_after(bb, e.m_p);
+      if(!e.m_p)
+         last_ = bb;
+      size_ -= n;
+   }
 
+   //Links num_units blocks of unit_bytes bytes, contiguous from b, after after_this.
+   //Returns the address after the last block.
    void_pointer incorporate_after(iterator after_this, const void_pointer &b, size_type unit_bytes, size_type num_units)
    {
       typedef typename boost::intrusive::pointer_traits<char_ptr> char_pointer_traits;
@@ -157,30 +251,44 @@ class basic_multiallocation_chain
          char_ptr prev_elem = elem;
          elem += difference_type(unit_bytes);
          for(size_type i = 0; i != num_units-1u; ++i, elem += difference_type(unit_bytes)){
-            ::new (boost::movelib::to_raw_pointer(prev_elem), boost_container_new_t()) void_pointer(elem);
+            node_traits::set_next(to_node_ptr(void_pointer(prev_elem)), to_node_ptr(void_pointer(elem)));
             prev_elem = elem;
          }
-         slist_impl_.incorporate_after(after_this, to_node_ptr(b), to_node_ptr(prev_elem), num_units);
+         this->priv_link_after(after_this.m_p, to_node_ptr(b), to_node_ptr(void_pointer(prev_elem)), num_units);
       }
       return elem;
    }
 
+   //Links the n blocks [b, before_e], already linked between them, after after_this
    void incorporate_after(iterator after_this, void_pointer b, void_pointer before_e, size_type n)
-   {  slist_impl_.incorporate_after(after_this, to_node_ptr(b), to_node_ptr(before_e), n);   }
+   {
+      if(n)
+         this->priv_link_after(after_this.m_p, to_node_ptr(b), to_node_ptr(before_e), n);
+   }
 
    void swap(basic_multiallocation_chain &x)
-   {  slist_impl_.swap(x.slist_impl_);   }
+   {
+      const bool this_empty = this->empty();
+      const bool x_empty    = x.empty();
+      const node_ptr this_last = last_;
+      const node_ptr x_last    = x.last_;
+      const node_ptr this_first = node_traits::get_next(this->root_ptr());
+      node_traits::set_next(this->root_ptr(), node_traits::get_next(x.root_ptr()));
+      node_traits::set_next(x.root_ptr(), this_first);
+      boost::adl_move_swap(size_, x.size_);
+      //An empty chain's last node is its own header
+      last_   = x_empty    ? this->root_ptr() : x_last;
+      x.last_ = this_empty ? x.root_ptr()     : this_last;
+   }
 
    static iterator iterator_to(const void_pointer &p)
-   {  return slist_impl_t::s_iterator_to(to_node(p));   }
+   {  return iterator(to_node_ptr(p));   }
 
    pointer_pair extract_data()
    {
-      if(BOOST_LIKELY(!slist_impl_.empty())){
-         pointer_pair ret
-            (slist_impl_.begin().operator->()
-            ,slist_impl_.last().operator->());
-         slist_impl_.clear();
+      if(BOOST_LIKELY(!this->empty())){
+         pointer_pair ret(from_node_ptr(node_traits::get_next(this->root_ptr())), from_node_ptr(last_));
+         this->init();
          return ret;
       }
       else {
@@ -189,67 +297,46 @@ class basic_multiallocation_chain
    }
 };
 
+//Typed view of a chain iterator: *it is the T object the block holds. It
+//returns a real T&, two equal iterators refer to the same block, and the
+//chain is singly linked, so it is a forward iterator.
 template <class Iterator, class T>
 class multialloc_iterator
-   : public boost::container::iterator
-      < typename Iterator::iterator_category
-      , T
-      , typename Iterator::difference_type
-      , T*
-      , T&
-      >
 {
    public:
+   typedef std::forward_iterator_tag            iterator_category;
+   typedef std::forward_iterator_tag            iterator_concept;
+   typedef T                                    value_type;
+   typedef typename Iterator::difference_type   difference_type;
+   typedef T*                                   pointer;
+   typedef T&                                   reference;
+
    inline explicit multialloc_iterator(const Iterator &it)
       :  m_it(it)
    {}
 
-   inline explicit multialloc_iterator()
+   inline multialloc_iterator()
       :  m_it()
    {}
 
-   //Constructors
    inline multialloc_iterator& operator++()
-   { increment();   return *this;   }
+   {  ++m_it;   return *this;   }
 
-      inline multialloc_iterator operator++(int)
+   inline multialloc_iterator operator++(int)
    {
       multialloc_iterator result (*this);
-      increment();
+      ++m_it;
       return result;
    }
 
    inline friend bool operator== (const multialloc_iterator& i, const multialloc_iterator& i2)
-   { return i.equal(i2); }
+   {  return i.m_it == i2.m_it; }
 
    inline friend bool operator!= (const multialloc_iterator& i, const multialloc_iterator& i2)
-   { return !(i == i2); }
-
-   inline friend typename Iterator::difference_type operator- (const multialloc_iterator& i, const multialloc_iterator& i2)
-   { return i2.distance_to(i); }
-
-   //Arithmetic
-   inline multialloc_iterator& operator+=(typename Iterator::difference_type off)
-   {  this->advance(off); return *this;   }
-
-   inline multialloc_iterator operator+(typename Iterator::difference_type off) const
-   {
-      multialloc_iterator other(*this);
-      other.advance(off);
-      return other;
-   }
-
-   inline friend multialloc_iterator operator+(typename Iterator::difference_type off, const multialloc_iterator& right)
-   {  return right + off; }
-
-   inline multialloc_iterator& operator-=(typename Iterator::difference_type off)
-   {  this->advance(-off); return *this;   }
-
-   inline multialloc_iterator operator-(typename Iterator::difference_type off) const
-   {  return *this + (-off);  }
+   {  return !(i == i2); }
 
    inline T& operator*() const
-   { return *this->operator->(); }
+   {  return *this->operator->(); }
 
    inline T* operator->() const
    {  return static_cast<T*>(static_cast<void*>(boost::movelib::iterator_to_raw_pointer(m_it)));   }
@@ -262,26 +349,7 @@ class multialloc_iterator
 
    private:
    Iterator m_it;
-
-   inline void increment()
-   { ++m_it; }
-
-   inline void decrement()
-   { --m_it; }
-
-   inline bool equal(const multialloc_iterator &other) const
-   {  return m_it == other.m_it;   }
-
-   inline bool less(const multialloc_iterator &other) const
-   {  return other.m_it < m_it;   }
-
-   inline void advance(typename Iterator::difference_type n)
-   {  boost::container::iterator_advance(m_it, n); }
-
-   inline typename Iterator::difference_type distance_to(const multialloc_iterator &other)const
-   {  return boost::container::iterator_distance(other.m_it, m_it); }
 };
-
 
 template<class MultiallocationChain, class T>
 class transform_multiallocation_chain
