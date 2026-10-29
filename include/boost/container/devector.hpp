@@ -977,11 +977,18 @@ class devector
 
    /**
    * **Returns**: The *minimum* number of elements that can be inserted into devector using
-   *   position-based insertions without requiring a reallocation. Note that, unlike in 
-   *   typical sequence containers like `vector`, `capacity()`, `capacity()` can be smaller than `size()`.
+   *   position-based insertions without requiring a reallocation. Note that, unlike in
+   *   typical sequence containers like `vector`, `capacity()` can be smaller than `size()`.
    *   This can happen if a user inserts elements in a particular way (usually inserting at
    *   front up to front_free_capacity() and at back up to back_free_capacity()).
-   * 
+   *
+   *   With the `relocate_never` option, `capacity()` is the size of the buffer, and it does not
+   *   tell how many elements can be inserted without a reallocation. The elements are never moved
+   *   inside the buffer, so an insertion avoids a reallocation only if there is enough free space at the
+   *   end where the space for the new elements is made: the back for insertions at `end()`,
+   *   the front for insertions at `begin()` and the nearer end for other positions.
+   *   See front_free_capacity() and back_free_capacity().
+   *
    * **Complexity**: Constant.
    */
    BOOST_CONTAINER_NODISCARD inline
@@ -1019,10 +1026,10 @@ class devector
    }
 
    /**
-   * **Effects**: If `sz` is greater than the size of `*this`,
-   * additional value-initialized elements are inserted. Invalidates iterators
+   * **Effects**: Same as resize_back(sz): if `sz` is greater than the size of `*this`,
+   * additional value-initialized elements are inserted at the back. Invalidates iterators
    * if reallocation is needed. If `sz` is smaller than than the size of `*this`,
-   * elements are erased from the extremes.
+   * elements are erased from the back.
    *
    * **Requires**: T shall be [MoveInsertable] into *this and [DefaultConstructible].
    *
@@ -1042,7 +1049,7 @@ class devector
 
    /**
     * **Effects**: Same as resize(sz) but creates default-initialized
-    * value-initialized.
+    * elements instead of value-initialized elements.
     */
    inline void resize(size_type sz, default_init_t)
    {
@@ -1052,10 +1059,10 @@ class devector
    /**
    * [CopyInsertable]: http://en.cppreference.com/w/cpp/concept/CopyInsertable
    *
-   * **Effects**: If `sz` is greater than the size of `*this`,
-   * copies of `c` are inserted at extremes.
+   * **Effects**: Same as resize_back(sz, c): if `sz` is greater than the size of `*this`,
+   * copies of `c` are inserted at the back.
    * If `sz` is smaller than than the size of `*this`,
-   * elements are popped from the extremes.
+   * elements are popped from the back.
    *
    * **Postcondition**: `sz == size()`.
    *
@@ -1216,6 +1223,11 @@ class devector
     * without requiring reallocation, where `n` is `new_capacity - size()`,
     * if `n` is positive. Otherwise, there are no effects.
     * Invalidates iterators if reallocation is needed.
+    *
+    * **Note**: With the `relocate_never` option, the elements are never moved inside the buffer
+    * and the free space is divided between the front and the back. Then only front_free_capacity()
+    * elements can be inserted at the front and back_free_capacity() elements at the back without a
+    * reallocation. Use reserve_front() or reserve_back() to get free space at one end.
     *
     * **Requires**: `T` shall be [MoveInsertable] into `*this`.
     *
@@ -2575,37 +2587,11 @@ class devector
       }
    }
 
+   //Not enough room at the front: as an insertion at begin(), the elements are
+   //relocated if the buffer has enough free space, otherwise a new buffer is allocated
    template <typename... Args>
-   void resize_front_slow_path(size_type sz, size_type n, Args&&... args)
-   {
-      const size_type back_free_cap = back_free_capacity();
-      const size_type new_capacity = calculate_new_capacity(sz + back_free_cap);
-      pointer new_buffer = allocate(new_capacity);
-
-      allocator_type &al = this->get_allocator_ref();
-      allocation_guard new_buffer_guard(new_buffer, new_capacity, al);
-
-      const size_type new_old_elem_index = new_capacity - this->size() - back_free_cap;
-      const size_type new_elem_index = new_old_elem_index - n;
-
-      detail::construction_guard<allocator_type> guard(new_buffer + new_elem_index, al);
-      guarded_construct_n(new_buffer + new_elem_index, n, guard, boost::forward<Args>(args)...);
-
-      //This might throw
-      boost::container::uninitialized_move_alloc(al, begin(), end(), new_buffer + new_old_elem_index);
-
-      //This can't throw
-      this->destroy_elements(data(), data() + size());
-      this->deallocate_buffer();
-
-      guard.release();
-      new_buffer_guard.release();
-
-      m_.buffer = new_buffer;
-      m_.set_capacity(new_capacity);
-      m_.set_front_idx(new_elem_index);
-      m_.set_back_idx(new_elem_index + sz);
-   }
+   void resize_front_slow_path(size_type, size_type n, Args&&... args)
+   {  this->insert_range_slow_path(this->cbegin(), n, this->priv_resize_proxy(boost::forward<Args>(args)...));  }
 
    template <typename... Args>
    void resize_back_impl(size_type sz, Args&&... args)
@@ -2634,32 +2620,11 @@ class devector
       }
    }
 
+   //Not enough room at the back: as an insertion at end(), the elements are
+   //relocated if the buffer has enough free space, otherwise a new buffer is allocated
    template <typename... Args>
-   void resize_back_slow_path(size_type sz, size_type n, Args&&... args)
-   {
-      const size_type new_capacity = calculate_new_capacity(sz + front_free_capacity());
-      pointer new_buffer = allocate(new_capacity);
-
-      allocator_type &al = this->get_allocator_ref();
-      allocation_guard new_buffer_guard(new_buffer, new_capacity, al);
-
-      detail::construction_guard<allocator_type> guard(new_buffer + m_.back_idx, al);
-      guarded_construct_n(new_buffer + m_.back_idx, n, guard, boost::forward<Args>(args)...);
-
-      //This might throw
-      boost::container::uninitialized_move_alloc(al, begin(), end(), new_buffer + m_.front_idx);
-
-      //This can't throw
-      this->destroy_elements(data(), data() + size());
-      this->deallocate_buffer();
-
-      guard.release();
-      new_buffer_guard.release();
-
-      m_.buffer = new_buffer;
-      m_.set_capacity(new_capacity);
-      m_.set_back_idx(m_.back_idx + n);
-   }
+   void resize_back_slow_path(size_type, size_type n, Args&&... args)
+   {  this->insert_range_slow_path(this->cend(), n, this->priv_resize_proxy(boost::forward<Args>(args)...));  }
 
    #else //   !defined(BOOST_NO_CXX11_VARIADIC_TEMPLATES) || defined(BOOST_CONTAINER_DOXYGEN_INVOKED)
 
@@ -2688,33 +2653,8 @@ class devector
    }\
    \
    BOOST_MOVE_TMPL_LT##N BOOST_MOVE_CLASS##N BOOST_MOVE_GT##N \
-   void resize_front_slow_path(size_type sz, size_type n BOOST_MOVE_I##N BOOST_MOVE_UREF##N)\
-   {\
-      const size_type back_free_cap = back_free_capacity();\
-      const size_type new_capacity = calculate_new_capacity(sz + back_free_cap);\
-      pointer new_buffer = allocate(new_capacity);\
-      allocator_type &al = this->get_allocator_ref();\
-      allocation_guard new_buffer_guard(new_buffer, new_capacity, al);\
-      \
-      const size_type new_old_elem_index = new_capacity - size() - back_free_cap;\
-      const size_type new_elem_index = new_old_elem_index - n;\
-      \
-      detail::construction_guard<allocator_type> guard(new_buffer + new_elem_index, al);\
-      guarded_construct_n(new_buffer + new_elem_index, n, guard BOOST_MOVE_I##N BOOST_MOVE_FWD##N);\
-      \
-      boost::container::uninitialized_move_alloc(al, begin(), end(), new_buffer + new_old_elem_index);\
-      \
-      guard.release();\
-      new_buffer_guard.release();\
-      \
-      this->destroy_elements(data(), data() + size());\
-      this->deallocate_buffer();\
-      \
-      m_.buffer = new_buffer;\
-      m_.set_capacity(new_capacity);\
-      m_.set_front_idx(new_elem_index);\
-      m_.set_back_idx(new_elem_index + sz);\
-   }\
+   void resize_front_slow_path(size_type, size_type n BOOST_MOVE_I##N BOOST_MOVE_UREF##N)\
+   {  this->insert_range_slow_path(this->cbegin(), n, this->priv_resize_proxy(BOOST_MOVE_FWD##N));  }\
    \
    BOOST_MOVE_TMPL_LT##N BOOST_MOVE_CLASS##N BOOST_MOVE_GT##N \
    void resize_back_impl(size_type sz BOOST_MOVE_I##N BOOST_MOVE_UREF##N)\
@@ -2743,34 +2683,24 @@ class devector
    }\
    \
    BOOST_MOVE_TMPL_LT##N BOOST_MOVE_CLASS##N BOOST_MOVE_GT##N \
-   void resize_back_slow_path(size_type sz, size_type n BOOST_MOVE_I##N BOOST_MOVE_UREF##N)\
-   {\
-      const size_type new_capacity = calculate_new_capacity(sz + front_free_capacity());\
-      pointer new_buffer = allocate(new_capacity);\
-      allocator_type &al = this->get_allocator_ref();\
-      allocation_guard new_buffer_guard(new_buffer, new_capacity, al);\
-   \
-      detail::construction_guard<allocator_type> guard(new_buffer + m_.back_idx, al);\
-      guarded_construct_n(new_buffer + m_.back_idx, n, guard BOOST_MOVE_I##N BOOST_MOVE_FWD##N);\
-   \
-      boost::container::uninitialized_move_alloc(al, begin(), end(), new_buffer + m_.front_idx);\
-   \
-      this->destroy_elements(data(), data() + size());\
-      this->deallocate_buffer();\
-   \
-      guard.release();\
-      new_buffer_guard.release();\
-   \
-      m_.buffer = new_buffer;\
-      m_.set_capacity(new_capacity);\
-      m_.set_back_idx(m_.back_idx + n);\
-   }\
+   void resize_back_slow_path(size_type, size_type n BOOST_MOVE_I##N BOOST_MOVE_UREF##N)\
+   {  this->insert_range_slow_path(this->cend(), n, this->priv_resize_proxy(BOOST_MOVE_FWD##N));  }\
    \
    //
    BOOST_MOVE_ITERATE_0TO9(BOOST_CONTAINER_DEVECTOR_SLOW_PATH)
    #undef BOOST_CONTAINER_DEVECTOR_SLOW_PATH
 
    #endif    //   !defined(BOOST_NO_CXX11_VARIADIC_TEMPLATES) || defined(BOOST_CONTAINER_DOXYGEN_INVOKED)
+
+   //The insertion proxies of resize: value-initialized, default-initialized or copies
+   dtl::insert_value_initialized_n_proxy<allocator_type> priv_resize_proxy() const
+   {  return dtl::insert_value_initialized_n_proxy<allocator_type>();  }
+
+   dtl::insert_default_initialized_n_proxy<allocator_type> priv_resize_proxy(default_init_t) const
+   {  return dtl::insert_default_initialized_n_proxy<allocator_type>();  }
+
+   dtl::insert_n_copies_proxy<allocator_type> priv_resize_proxy(const T &x) const
+   {  return dtl::insert_n_copies_proxy<allocator_type>(x);  }
 
    void reallocate_at(size_type new_capacity, size_type buffer_offset)
    {
