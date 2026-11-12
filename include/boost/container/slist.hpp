@@ -256,7 +256,11 @@ class slist
    //!
    //! <b>Complexity</b>: Linear to the range [first, last).
    template <class InpIt>
-   slist(InpIt first, InpIt last, const allocator_type& a =  allocator_type())
+   slist(InpIt first, InpIt last, const allocator_type& a =  allocator_type()
+      #if !defined(BOOST_CONTAINER_DOXYGEN_INVOKED)
+      , typename dtl::disable_if_convertible<InpIt, size_type>::type * = 0
+      #endif
+      )
       : AllocHolder(a)
    { this->insert_after(this->cbefore_begin(), first, last); }
 
@@ -598,8 +602,8 @@ class slist
    //!
    //! <b>Note</b>: Non-standard extension.
    BOOST_CONTAINER_NODISCARD inline
-      const_iterator previous(const_iterator p)
-   {  return const_iterator(this->icont().previous(p.get())); }
+      const_iterator previous(const_iterator p) const BOOST_NOEXCEPT_OR_NOTHROW
+   {  return const_iterator(this->non_const_icont().previous(p.get())); }
 
    //////////////////////////////////////////////
    //
@@ -1720,14 +1724,14 @@ inline typename slist<T, A>::size_type erase_if(slist<T, A>& c, Pred pred)
 //! of `InpIt` and using the default allocator.
 template <typename InpIt>
 slist(InpIt, InpIt) ->
-   slist<typename iterator_traits<InpIt>::value_type>;
+   slist<typename iter_value<InpIt>::type>;
 
 //! <b>Deduction guide</b>: allows an `slist` to be constructed from the iterator
 //! range <code>[first, last)</code>, deducing the element type from the value type
 //! of `InpIt` and taking the allocator type from the supplied allocator.
 template <typename InpIt, typename Allocator>
 slist(InpIt, InpIt, Allocator const&) ->
-   slist<typename iterator_traits<InpIt>::value_type, Allocator>;
+   slist<typename iter_value<InpIt>::type, Allocator>;
 
 #endif
 

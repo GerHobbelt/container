@@ -30,7 +30,7 @@
 #include <string>
 #include "emplace_test.hpp"
 #include "propagate_allocator_test.hpp"
-#include "void_allocator_test.hpp"
+#include "allocator_test.hpp"
 #include "vector_test.hpp"
 #include "default_init_test.hpp"
 #include "../../intrusive/test/iterator_test.hpp"
@@ -160,7 +160,9 @@ bool do_test()
          IntType move_me(i);
          cntc.insert(cntc.end(), boost::move(move_me));
          stdc.insert(stdc.end(), i);
-         if(!test::CheckEqualContainers(cntc, stdc))
+         //A full comparison after each insertion is quadratic and slow in debug
+         //so the containers are compared each "max" insertions
+         if((i % max) == 0 && !test::CheckEqualContainers(cntc, stdc))
             return false;
       }
       if(!test::CheckEqualContainers(cntc, stdc)) return false;
@@ -172,7 +174,8 @@ bool do_test()
          IntType move_me(i);
          cntc.push_back(boost::move(move_me));
          stdc.push_back(i);
-         if(!test::CheckEqualContainers(cntc, stdc)) return false;
+         if((i % max) == 0 && !test::CheckEqualContainers(cntc, stdc))
+            return false;
       }
       if(!test::CheckEqualContainers(cntc, stdc)) return false;
 
@@ -240,7 +243,12 @@ bool do_test()
          stdc.insert(stdc.begin()+std::ptrdiff_t(stdc.size()), aux_vect2, aux_vect2 + 50);
          if(!test::CheckEqualContainers(cntc, stdc)) return false;
 
-         for(int i = 0, j = static_cast<int>(cntc.size()); i < j; ++i){
+         //Each erasure of the first element moves all the other elements, so
+         //most elements are erased at once and only the last "max" one by one.
+         cntc.erase(cntc.begin(), cntc.end() - max);
+         stdc.erase(stdc.begin(), stdc.end() - max);
+         if(!test::CheckEqualContainers(cntc, stdc)) return false;
+         for(int i = 0; i < max; ++i){
             cntc.erase(cntc.begin());
             stdc.erase(stdc.begin());
          }
@@ -318,6 +326,11 @@ bool test_ctad()  //Older clang versions suffer from ICE here
       MyStd gold = MyStd{ 1, 2, 3 };
       segtor<int>  test = segtor<int>(gold.begin(), gold.end(), new_allocator<int>());
       if (!test::CheckEqualContainers(gold, test)) return false;
+   }
+   {
+      segtor test(5, 3);
+      segtor test2(5, 3, new_allocator<int>());
+      if (test.size() != 5u || test2.size() != 5u || test[4] != 3 || test2[4] != 3) return false;
    }
    return true;
 }

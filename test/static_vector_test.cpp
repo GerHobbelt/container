@@ -17,6 +17,7 @@
 #include "static_vector_test.hpp"
 #include "unqualified_swap_test.hpp"
 #include "throwing_utilities.hpp"
+#include "vector_test.hpp"
 
 
 template <typename T, size_t N>
@@ -800,6 +801,73 @@ void test_move_assignment_move_constructs_extra_elements()
 void test_move_assignment_move_constructs_extra_elements() {}
 #endif   //BOOST_NO_EXCEPTIONS
 
+//Range functions with a single-pass iterator whose copies share the position
+template<class T, std::size_t N>
+void test_single_pass_iterator_n()
+{
+   typedef static_vector<T, 64u> sv_t;
+   int values[N];
+   for(std::size_t i = 0; i != N; ++i)
+      values[i] = int(i);
+   {  //static_vector(It, It)
+      test::shared_input_range<T, N> r(values);
+      const sv_t s(r.mbegin(), r.mend());
+      BOOST_TEST(r.read_once());
+      BOOST_TEST(test::CheckEqualContainers(s, std::vector<int>(values, values + N)));
+   }
+   //insert(pos, It, It) and assign(It, It)
+   BOOST_TEST(0 == (test::vector_single_pass_insert_test<sv_t, N>()));
+}
+
+void test_single_pass_iterator()
+{
+   test_single_pass_iterator_n<int, 3u>();
+   test_single_pass_iterator_n<int, 50u>();
+   test_single_pass_iterator_n<test::movable_int, 3u>();
+   test_single_pass_iterator_n<test::movable_int, 50u>();
+}
+
+//Copy and move from a static_vector with another capacity and other options
+void test_other_capacity_and_options()
+{
+   typedef static_vector_options< throw_on_overflow<false> >::type no_throw_opt_t;
+   typedef static_vector<int, 8> big_t;
+   typedef static_vector<int, 4> small_t;
+   typedef static_vector<int, 4, no_throw_opt_t> small_opt_t;
+   const int values[] = { 1, 2, 3 };
+   const std::vector<int> v(values, values + 3);
+   const big_t big(values, values + 3);
+   {
+      const small_t s(big);
+      BOOST_TEST(test::CheckEqualContainers(s, v));
+      const small_opt_t so(big);
+      BOOST_TEST(test::CheckEqualContainers(so, v));
+      const big_t b(so);
+      BOOST_TEST(test::CheckEqualContainers(b, v));
+   }
+   {
+      big_t src(big);
+      small_opt_t so(boost::move(src));
+      BOOST_TEST(test::CheckEqualContainers(so, v));
+      src = big;
+      so.clear();
+      so = boost::move(src);
+      BOOST_TEST(test::CheckEqualContainers(so, v));
+      src.clear();
+      src = boost::move(so);
+      BOOST_TEST(test::CheckEqualContainers(src, v));
+   }
+}
+
+//A count and a value of type int must select the count constructor, not the
+//iterator range constructor template
+void test_count_value_constructor()
+{
+   static_vector<int, 10> s(5, 3);
+   BOOST_TEST_EQ(s.size(), 5u);
+   BOOST_TEST_EQ(s[4], 3);
+}
+
 int main(int, char* [])
 {
    if(!test_unqualified_swap())
@@ -922,6 +990,12 @@ int main(int, char* [])
 
    test_move_constructor_can_throw();
    test_move_assignment_move_constructs_extra_elements();
+
+   test_single_pass_iterator();
+
+   test_other_capacity_and_options();
+
+   test_count_value_constructor();
 
    return boost::report_errors();
 }

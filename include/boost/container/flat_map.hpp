@@ -100,6 +100,38 @@ BOOST_CONTAINER_FORCEINLINE static const void* voidptr(const T& t)
 
 #endif   //BOOST_CONTAINER_STD_PAIR_IS_MOVABLE
 
+namespace dtl {
+
+#if defined(BOOST_CONTAINER_STD_PAIR_IS_MOVABLE)
+
+template<class Value, class Sequence, class Pred>
+inline typename Sequence::size_type flat_map_erase_if(Sequence &seq, Pred pred)
+{  return (flat_tree_container_erase_if)(seq, pred);  }
+
+#else
+
+template<class Value, class Pred>
+struct flat_map_value_pred
+{
+   Pred &pred;
+
+   explicit flat_map_value_pred(Pred &p)
+      : pred(p)
+   {}
+
+   template<class ImplValue>
+   bool operator()(ImplValue &v) const
+   {  return pred(BOOST_CONTAINER_FORCE(Value, v));  }
+};
+
+template<class Value, class Sequence, class Pred>
+inline typename Sequence::size_type flat_map_erase_if(Sequence &seq, Pred pred)
+{  return (flat_tree_container_erase_if)(seq, flat_map_value_pred<Value, Pred>(pred));  }
+
+#endif   //BOOST_CONTAINER_STD_PAIR_IS_MOVABLE
+
+}  //namespace dtl {
+
 #endif   //#ifndef BOOST_CONTAINER_DOXYGEN_INVOKED
 
 //! A flat_map is a kind of associative container that supports unique keys (contains at
@@ -377,7 +409,7 @@ class flat_map
    template <class InputIterator>
    inline
       flat_map(ordered_unique_range_t, InputIterator first, InputIterator last, const allocator_type& a)
-      : m_flat_tree(ordered_unique_range, first, last, Compare(), a)
+      : m_flat_tree(ordered_unique_range, first, last, Compare(), BOOST_CONTAINER_FORCE(const impl_allocator_type, a))
    {}
 
 #if !defined(BOOST_NO_CXX11_HDR_INITIALIZER_LIST)
@@ -1900,11 +1932,13 @@ class flat_map
 
 //! <b>Effects</b>: Erases all elements that satisfy the predicate pred from the container c.
 //!
+//! <b>Throws</b>: If pred or the move assignment of the elements throws, c is left empty.
+//!
 //! <b>Complexity</b>: Linear.
 template <class K, class M, class C, class A, class Pred>
 inline typename flat_map<K, M, C, A>::size_type erase_if(flat_map<K, M, C, A>& c, Pred pred)
 {
-   return container_erase_if(c, pred);
+   return dtl::flat_map_erase_if<typename flat_map<K, M, C, A>::value_type>(c.tree().get_sequence_ref(), pred);
 }
 
 #ifndef BOOST_CONTAINER_NO_CXX17_CTAD
@@ -2272,7 +2306,7 @@ class flat_multimap
    template <class InputIterator>
    inline
    flat_multimap(ordered_range_t, InputIterator first, InputIterator last, const Compare& comp, const allocator_type& a)
-      : m_flat_tree(ordered_range, first, last, comp, a)
+      : m_flat_tree(ordered_range, first, last, comp, BOOST_CONTAINER_FORCE(const impl_allocator_type, a))
    {}
 
    //! <b>Effects</b>: Constructs an empty flat_multimap using the specified comparison object and
@@ -2287,7 +2321,7 @@ class flat_multimap
    template <class InputIterator>
    inline
       flat_multimap(ordered_range_t, InputIterator first, InputIterator last, const allocator_type &a)
-      : m_flat_tree(ordered_range, first, last, Compare(), a)
+      : m_flat_tree(ordered_range, first, last, Compare(), BOOST_CONTAINER_FORCE(const impl_allocator_type, a))
    {}
 
 #if !defined(BOOST_NO_CXX11_HDR_INITIALIZER_LIST)
@@ -3307,11 +3341,13 @@ class flat_multimap
 
 //! <b>Effects</b>: Erases all elements that satisfy the predicate pred from the container c.
 //!
+//! <b>Throws</b>: If pred or the move assignment of the elements throws, c is left empty.
+//!
 //! <b>Complexity</b>: Linear.
 template <class K, class M, class C, class A, class Pred>
 inline typename flat_multimap<K, M, C, A>::size_type erase_if(flat_multimap<K, M, C, A>& c, Pred pred)
 {
-   return container_erase_if(c, pred);
+   return dtl::flat_map_erase_if<typename flat_multimap<K, M, C, A>::value_type>(c.tree().get_sequence_ref(), pred);
 }
 
 #ifndef BOOST_CONTAINER_NO_CXX17_CTAD

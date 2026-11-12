@@ -30,7 +30,7 @@
 #include <string>
 #include "emplace_test.hpp"
 #include "propagate_allocator_test.hpp"
-#include "void_allocator_test.hpp"
+#include "allocator_test.hpp"
 #include "vector_test.hpp"
 #include "default_init_test.hpp"
 #include "../../intrusive/test/iterator_test.hpp"
@@ -160,7 +160,9 @@ bool do_test()
          IntType move_me(i);
          cntc.insert(cntc.end(), boost::move(move_me));
          stdc.insert(stdc.end(), i);
-         if(!test::CheckEqualContainers(cntc, stdc))
+         //A full comparison after each insertion is quadratic and slow in debug
+         //so the containers are compared each "max" insertions
+         if((i % max) == 0 && !test::CheckEqualContainers(cntc, stdc))
             return false;
       }
       if(!test::CheckEqualContainers(cntc, stdc)) return false;
@@ -172,7 +174,8 @@ bool do_test()
          IntType move_me(i);
          cntc.push_back(boost::move(move_me));
          stdc.push_back(i);
-         if(!test::CheckEqualContainers(cntc, stdc)) return false;
+         if((i % max) == 0 && !test::CheckEqualContainers(cntc, stdc))
+            return false;
       }
       if(!test::CheckEqualContainers(cntc, stdc)) return false;
 
@@ -183,7 +186,7 @@ bool do_test()
          IntType move_me(i);
          cntc.push_front(boost::move(move_me));
          stdc.push_front(i);
-         if(!test::CheckEqualContainers(cntc, stdc))
+         if((i % max) == 0 && !test::CheckEqualContainers(cntc, stdc))
             return false;
       }
       if(!test::CheckEqualContainers(cntc, stdc)) return false;
@@ -331,6 +334,11 @@ bool test_ctad()  //Older clang versions suffer from ICE here
       deque<int>  test = deque<int>(gold.begin(), gold.end(), new_allocator<int>());
       if (!test::CheckEqualContainers(gold, test)) return false;
    }
+   {
+      deque test(5, 3);
+      deque test2(5, 3, new_allocator<int>());
+      if (test.size() != 5u || test2.size() != 5u || test[4] != 3 || test2[4] != 3) return false;
+   }
    return true;
 }
 #else
@@ -447,7 +455,9 @@ bool test_huge_size_length_error()
    #ifndef BOOST_NO_EXCEPTIONS
    typedef typename boost::container::deque_options<boost::container::reservable<Reservable> >::type options_t;
    boost::container::deque<char, void, options_t> d(10u, 'a');
-   const std::size_t sizes[] = { std::size_t(-1), std::size_t(-1) - 1u, std::size_t(-1) / 2u };
+   //Sizes above max_size(): a smaller size can throw bad_alloc instead
+   const std::size_t max = d.max_size();
+   const std::size_t sizes[] = { std::size_t(-1), std::size_t(-1) - 1u, max == std::size_t(-1) ? max : std::size_t(max + 1u) };
    for(std::size_t i = 0; i != sizeof(sizes)/sizeof(sizes[0]); ++i){
       bool length_error_thrown = false;
       try{

@@ -65,8 +65,8 @@
 #include <initializer_list>   //for std::initializer_list
 #endif
 
-//GCC 12 has a regression for array-bounds warnings
-#if defined(BOOST_GCC) && (BOOST_GCC >= 120000) && (BOOST_GCC < 130000)
+//GCC before 13 gives false array-bounds warnings
+#if defined(BOOST_GCC) && (BOOST_GCC >= 40600) && (BOOST_GCC < 130000)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Warray-bounds"
 #endif
@@ -866,7 +866,7 @@ class basic_string
    //! <b>Throws</b>: If allocator_type's default constructor or allocation throws.
    template<template <class, class> class BasicStringView>
    explicit basic_string(BasicStringView<CharT, Traits> sv, const allocator_type& a = allocator_type())
-      :  base_t(allocator_traits_type::select_on_container_copy_construction(a))
+      :  base_t(a)
    {
       this->priv_short_terminate();
       this->assign(sv);
@@ -1649,8 +1649,7 @@ class basic_string
    {
       if (pos > sv.size())
          throw_out_of_range("basic_string::append out of range position");
-      return this->append(sv.begin() + pos,
-                          sv.begin() + pos + dtl::min_value(n, sv.size() - pos));
+      return this->append(sv.data() + pos, dtl::min_value(n, size_type(sv.size() - pos)));
    }
 
    //! <b>Requires</b>: s points to an array of at least n elements of CharT.
@@ -1766,8 +1765,7 @@ class basic_string
    {
       if (pos > sv.size())
          throw_out_of_range("basic_string::assign out of range position");
-      return this->assign(sv.begin() + pos,
-                          sv.begin() + pos + dtl::min_value(n, sv.size() - pos));
+      return this->assign(sv.data() + pos, dtl::min_value(n, size_type(sv.size() - pos)));
    }
 
    //! <b>Requires</b>: pos <= str.size()
@@ -2027,7 +2025,7 @@ class basic_string
       size_type len = dtl::min_value(n, str_size - pos2);
       if (sz > this->max_size() - len)
          throw_length_error("basic_string::insert max_size() exceeded");
-      const CharT *beg_ptr = boost::movelib::to_raw_pointer(sv.begin()) + pos2;
+      const CharT *beg_ptr = sv.data() + pos2;
       const CharT *end_ptr = beg_ptr + len;
       this->insert(this->priv_addr() + pos1, beg_ptr, end_ptr);
       return *this;
@@ -3667,7 +3665,9 @@ basic_string(InputIterator, InputIterator) ->
 //! value type of `InputIterator` and taking the allocator type from the supplied allocator.
 template <typename InputIterator, typename Allocator>
 basic_string(InputIterator, InputIterator, Allocator const&) ->
-   basic_string<typename iterator_traits<InputIterator>::value_type, Allocator>;
+   basic_string< typename iterator_traits<InputIterator>::value_type
+               , std::char_traits<typename iterator_traits<InputIterator>::value_type>
+               , Allocator>;
 
 #endif
 
@@ -3701,8 +3701,8 @@ struct is_string
    BOOST_STATIC_CONSTEXPR bool value = false;
 };
 
-template<class C, class T, class A>
-struct is_string< basic_string<C, T, A> >
+template<class C, class T, class A, class O>
+struct is_string< basic_string<C, T, A, O> >
 {
    BOOST_STATIC_CONSTEXPR bool value = true;
 };
@@ -4033,6 +4033,20 @@ string_fill(std::basic_ostream<CharT, Traits>& os,
    return ok;
 }
 
+//Sets badbit after an exception in an input function. setstate() sets the state
+//before it throws ios_base::failure, so that exception is ignored: the caller
+//rethrows the original exception if badbit is in exceptions()
+template <class CharT, class Traits>
+inline void string_set_badbit(std::basic_istream<CharT, Traits>& is)
+{
+   BOOST_CONTAINER_TRY{
+      is.setstate(std::ios_base::badbit);
+   }
+   BOOST_CONTAINER_CATCH(...){
+   }
+   BOOST_CONTAINER_CATCH_END
+}
+
 }  //namespace dtl {
 #endif   //#ifndef BOOST_CONTAINER_DOXYGEN_INVOKED
 
@@ -4082,31 +4096,37 @@ operator>>(std::basic_istream<CharT, Traits>& is, basic_string<CharT,Traits,Allo
       const std::ctype<CharT>& ctype = std::use_facet<std::ctype<CharT> >(is.getloc());
 
       s.clear();
+      //The width only limits the characters to read: reserving it can allocate
+      //much more memory than the word needs
       std::size_t n = static_cast<std::size_t>(is.width(0));
       if (n == 0)
          n = static_cast<std::size_t>(-1);
-      else
-         s.reserve(n);
 
-      while (n-- > 0) {
-         typename Traits::int_type c1 = buf->sbumpc();
+      BOOST_CONTAINER_TRY{
+         while (n-- > 0) {
+            //The whitespace that ends the word is not extracted
+            const typename Traits::int_type c1 = buf->sgetc();
 
-         if (Traits::eq_int_type(c1, Traits::eof())) {
-            is.setstate(std::ios_base::eofbit);
-            break;
-         }
-         else {
-            CharT c = Traits::to_char_type(c1);
-
-            if (ctype.is(std::ctype<CharT>::space, c)) {
-               if (Traits::eq_int_type(buf->sputbackc(c), Traits::eof()))
-                  is.setstate(std::ios_base::failbit);
+            if (Traits::eq_int_type(c1, Traits::eof())) {
+               is.setstate(std::ios_base::eofbit);
                break;
             }
-            else
-               s.push_back(c);
+            const CharT c = Traits::to_char_type(c1);
+            if (ctype.is(std::ctype<CharT>::space, c))
+               break;
+            s.push_back(c);
+            buf->sbumpc();
          }
       }
+      BOOST_CONTAINER_CATCH(...){
+         //An exception (e.g. bad_alloc) sets badbit and is rethrown only if
+         //badbit is in exceptions()
+         dtl::string_set_badbit(is);
+         if (is.exceptions() & std::ios_base::badbit) {
+            BOOST_CONTAINER_RETHROW
+         }
+      }
+      BOOST_CONTAINER_CATCH_END
 
       // If we have read no characters, then set failbit.
       if (s.size() == 0)
@@ -4120,7 +4140,7 @@ operator>>(std::basic_istream<CharT, Traits>& is, basic_string<CharT,Traits,Allo
 
 template <class CharT, class Traits, class Allocator, class Options>
 std::basic_istream<CharT, Traits>&
-getline(std::istream& is, basic_string<CharT,Traits,Allocator,Options>& s,CharT delim)
+getline(std::basic_istream<CharT, Traits>& is, basic_string<CharT,Traits,Allocator,Options>& s,CharT delim)
 {
    typename basic_string<CharT,Traits,Allocator,Options>::size_type nread = 0;
    typename std::basic_istream<CharT, Traits>::sentry sentry(is, true);
@@ -4128,21 +4148,32 @@ getline(std::istream& is, basic_string<CharT,Traits,Allocator,Options>& s,CharT 
       std::basic_streambuf<CharT, Traits>* buf = is.rdbuf();
       s.clear();
 
-      while (nread < s.max_size()) {
-         int c1 = buf->sbumpc();
-         if (Traits::eq_int_type(c1, Traits::eof())) {
-            is.setstate(std::ios_base::eofbit);
-            break;
-         }
-         else {
-            ++nread;
-            CharT c = Traits::to_char_type(c1);
-            if (!Traits::eq(c, delim))
-               s.push_back(c);
-            else
-               break;              // Character is extracted but not appended.
+      BOOST_CONTAINER_TRY{
+         while (nread < s.max_size()) {
+            const typename Traits::int_type c1 = buf->sbumpc();
+            if (Traits::eq_int_type(c1, Traits::eof())) {
+               is.setstate(std::ios_base::eofbit);
+               break;
+            }
+            else {
+               ++nread;
+               CharT c = Traits::to_char_type(c1);
+               if (!Traits::eq(c, delim))
+                  s.push_back(c);
+               else
+                  break;              // Character is extracted but not appended.
+            }
          }
       }
+      BOOST_CONTAINER_CATCH(...){
+         //An exception (e.g. bad_alloc) sets badbit and is rethrown only if
+         //badbit is in exceptions()
+         dtl::string_set_badbit(is);
+         if (is.exceptions() & std::ios_base::badbit) {
+            BOOST_CONTAINER_RETHROW
+         }
+      }
+      BOOST_CONTAINER_CATCH_END
    }
    if (nread == 0 || nread >= s.max_size())
       is.setstate(std::ios_base::failbit);
@@ -4154,16 +4185,16 @@ template <class CharT, class Traits, class Allocator, class Options>
 inline std::basic_istream<CharT, Traits>&
 getline(std::basic_istream<CharT, Traits>& is, basic_string<CharT,Traits,Allocator,Options>& s)
 {
-   return getline(is, s, '\n');
+   return getline(is, s, is.widen('\n'));
 }
 
 //! <b>Effects</b>: Erases all elements that compare equal to v from the container c.
 //!
 //! <b>Complexity</b>: Linear.
-template <class T, class Tr, class A, class U>
-inline typename basic_string<T, Tr, A>::size_type erase(basic_string<T, Tr, A>& c, const U& v)
+template <class T, class Tr, class A, class O, class U>
+inline typename basic_string<T, Tr, A, O>::size_type erase(basic_string<T, Tr, A, O>& c, const U& v)
 {
-   typename basic_string<T, Tr, A>::size_type old_size = c.size();
+   typename basic_string<T, Tr, A, O>::size_type old_size = c.size();
    c.erase(boost::container::remove(c.begin(), c.end(), v), c.end());
    return old_size - c.size();
 }
@@ -4171,18 +4202,19 @@ inline typename basic_string<T, Tr, A>::size_type erase(basic_string<T, Tr, A>& 
 //! <b>Effects</b>: Erases all elements that satisfy the predicate pred from the container c.
 //!
 //! <b>Complexity</b>: Linear.
-template <class T, class Tr, class A, class Pred>
-inline typename basic_string<T, Tr, A>::size_type erase_if(basic_string<T, Tr, A>& c, Pred pred)
+template <class T, class Tr, class A, class O, class Pred>
+inline typename basic_string<T, Tr, A, O>::size_type erase_if(basic_string<T, Tr, A, O>& c, Pred pred)
 {
-   typename basic_string<T, Tr, A>::size_type old_size = c.size();
+   typename basic_string<T, Tr, A, O>::size_type old_size = c.size();
    c.erase(boost::container::remove_if(c.begin(), c.end(), pred), c.end());
    return old_size - c.size();
 }
 
 }}
 
-//GCC 12 has a regression for array-bounds warnings
-#if defined(BOOST_GCC) && (BOOST_GCC >= 120000) && (BOOST_GCC < 130000)
+//GCC before 13 gives false array-bounds warnings (e.g. GCC 8 32-bit, GCC 12): it does not see that
+//reserve() moved the string to dynamic memory before a copy longer than the short buffer
+#if defined(BOOST_GCC) && (BOOST_GCC >= 40600) && (BOOST_GCC < 130000)
 #pragma GCC diagnostic pop
 #endif
 

@@ -9,9 +9,10 @@
 //////////////////////////////////////////////////////////////////////////////
 
 #include <boost/container/experimental/nest.hpp>
-#include "void_allocator_test.hpp"
+#include "allocator_test.hpp"
 #include <boost/container/new_allocator.hpp>
 #include "lightweight_test.hpp"
+#include "shared_input_iterator.hpp"
 #include <algorithm>
 #include <functional>
 #include <vector>
@@ -751,6 +752,138 @@ void test_initializer_list_operations()
 }
 #endif
 
+template<std::size_t N>
+void test_single_pass_iterator_n()
+{
+   typedef test::shared_input_range<int, N> range_t;
+   int values[N];
+   for(std::size_t i = 0; i != N; ++i)
+      values[i] = int(i);
+   std::vector<int> expected(values, values + N);
+   {  //nest(It, It)
+      range_t r(values);
+      const nest<int> h(r.begin(), r.end());
+      BOOST_TEST(r.read_once());
+      std::vector<int> got(h.begin(), h.end());
+      std::sort(got.begin(), got.end());
+      BOOST_TEST(got == expected);
+   }
+   {  //nest(It, It, alloc)
+      range_t r(values);
+      const nest<int> h(r.begin(), r.end(), nest<int>::allocator_type());
+      BOOST_TEST(r.read_once());
+      std::vector<int> got(h.begin(), h.end());
+      std::sort(got.begin(), got.end());
+      BOOST_TEST(got == expected);
+   }
+   //insert(It, It) and assign(It, It) in an empty nest and in a nest with elements
+   for(int n = 0; n != 2; ++n){
+      const std::size_t size = n ? 10u : 0u;
+      nest<int> h(size, 100);
+      range_t r(values);
+      h.insert(r.begin(), r.end());
+      BOOST_TEST(r.read_once());
+      std::vector<int> got(h.begin(), h.end());
+      std::sort(got.begin(), got.end());
+      std::vector<int> exp_ins(expected);
+      exp_ins.insert(exp_ins.end(), size, 100);
+      BOOST_TEST(got == exp_ins);
+
+      nest<int> h2(size, 100);
+      range_t r2(values);
+      h2.assign(r2.begin(), r2.end());
+      BOOST_TEST(r2.read_once());
+      std::vector<int> got2(h2.begin(), h2.end());
+      std::sort(got2.begin(), got2.end());
+      BOOST_TEST(got2 == expected);
+   }
+}
+
+void test_single_pass_iterator()
+{
+   test_single_pass_iterator_n<3u>();
+   test_single_pass_iterator_n<50u>();
+}
+
+void test_ctad()
+{
+   #if !defined(BOOST_CONTAINER_NO_CXX17_CTAD)
+   std::vector<int> v(3u, 1);
+   {
+      nest n(v.begin(), v.end());
+      BOOST_TEST((boost::container::dtl::is_same<nest<int>, decltype(n)>::value));
+      BOOST_TEST_EQ(n.size(), 3u);
+   }
+   {
+      nest n(v.begin(), v.end(), new_allocator<int>());
+      BOOST_TEST((boost::container::dtl::is_same<nest<int, new_allocator<int> >, decltype(n)>::value));
+      BOOST_TEST_EQ(n.size(), 3u);
+   }
+   #endif
+}
+
+struct multiple_of_4
+{
+   bool operator()(int x) const { return x % 4 == 0; }
+};
+
+//With prefetch enabled, the operations that step from the last block
+//to the header prefetch the header as if it were a block
+template<class Options>
+void test_prefetch_at_header()
+{
+   typedef nest<int, void, Options> nest_t;
+   typedef typename nest_t::iterator iterator;
+   const int n = 200;   //4 blocks
+
+   nest_t h;
+   for(int i = 0; i != n; ++i)
+      h.insert(i);
+   h.sort();
+
+   int sum = 0, count = 0;
+   for(iterator it = h.begin(); it != h.end(); ++it) {
+      BOOST_TEST_EQ(*it, count);
+      sum += *it;
+      ++count;
+   }
+   BOOST_TEST_EQ(count, n);
+   BOOST_TEST_EQ(sum, n*(n-1)/2);
+
+   count = 0;
+   for(iterator it = h.end(); it != h.begin(); ) {
+      --it;
+      ++count;
+      BOOST_TEST_EQ(*it, n - count);
+   }
+   BOOST_TEST_EQ(count, n);
+
+   boost::container::for_each(h.begin(), h.end(), doubler_functor());
+   sum = 0;
+   for(iterator it = h.begin(); it != h.end(); ++it)
+      sum += *it;
+   BOOST_TEST_EQ(sum, n*(n-1));
+
+   BOOST_TEST_EQ(erase_if(h, multiple_of_4()), typename nest_t::size_type(n/2));
+   BOOST_TEST_EQ(h.size(), typename nest_t::size_type(n/2));
+   h.shrink_to_fit();
+   BOOST_TEST_EQ(h.size(), typename nest_t::size_type(n/2));
+
+   nest_t h2(boost::move(h));
+   BOOST_TEST(h.empty());
+   h.swap(h2);
+   BOOST_TEST_EQ(h.size(), typename nest_t::size_type(n/2));
+   for(iterator it = h.begin(); it != h.end(); ++it)
+      BOOST_TEST_EQ(*it % 4, 2);
+
+   h.erase(h.begin(), h.end());
+   BOOST_TEST(h.empty());
+   for(int i = 0; i != n; ++i)
+      h.insert(i);
+   h.clear();
+   BOOST_TEST(h.empty());
+}
+
 int main()
 {
    test_default_construction();
@@ -810,6 +943,11 @@ int main()
    BOOST_TEST((test::test_void_allocator
          < nest<int, new_allocator<void> >
          , new_allocator<int> >()));
+
+   test_single_pass_iterator();
+   test_ctad();
+   test_prefetch_at_header< nest_options<store_data_in_block<false> >::type >();
+   test_prefetch_at_header< nest_options<store_data_in_block<true> >::type >();
 
    return boost::report_errors();
 }

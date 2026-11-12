@@ -16,7 +16,7 @@
 #include "movable_int.hpp"
 #include "list_test.hpp"
 #include "propagate_allocator_test.hpp"
-#include "void_allocator_test.hpp"
+#include "allocator_test.hpp"
 #include "emplace_test.hpp"
 #include "../../intrusive/test/iterator_test.hpp"
 #include "unqualified_swap_test.hpp"
@@ -191,6 +191,54 @@ bool test_unqualified_swap()
    return true;
 }
 
+//previous() of a const slist returns a const_iterator
+bool test_previous()
+{
+   typedef boost::container::slist<int> cont;
+   cont m;  m.push_front(3);  m.push_front(2);  m.push_front(1);
+   const cont &c = m;
+   cont::const_iterator i = c.begin();
+   ++i;
+   if(c.previous(i) != c.begin())
+      return false;
+   if(c.previous(c.begin()) != c.end())
+      return false;
+   if(*c.previous(c.end()) != 3)
+      return false;
+   cont::iterator mi = m.previous(m.end());
+   if(*mi != 3)
+      return false;
+   return true;
+}
+
+//insert_after of n elements or a range returns the last inserted element,
+//or the position if nothing is inserted (version 2 allocators use another path)
+template<class Allocator>
+bool test_insert_after_return()
+{
+   typedef boost::container::slist<int, Allocator> cont;
+   typedef typename cont::iterator iterator;
+   cont s;
+   s.push_front(0);
+   const int v[] = { 1, 2, 3 };
+   iterator it = s.insert_after(s.begin(), v, v + 3);
+   if(*it != 3 || ++it != s.end())
+      return false;
+   if(s.insert_after(s.begin(), v, v) != s.begin())
+      return false;
+   it = s.insert_after(s.begin(), 2u, 7);
+   if(*it != 7 || *++it != 1)
+      return false;
+   if(s.insert_after(s.begin(), 0u, 7) != s.begin() || s.size() != 6u)
+      return false;
+   #if !defined(BOOST_NO_CXX11_HDR_INITIALIZER_LIST)
+   it = s.insert_after(s.begin(), { 8, 9 });
+   if(*it != 9 || *++it != 7)
+      return false;
+   #endif
+   return true;
+}
+
 int main ()
 {
    if(!test_unqualified_swap())
@@ -313,6 +361,13 @@ int main ()
          return 1;
       test.pop_front();
    }
+   {  //A count and a value: the iterator range guides must not give a hard error
+      boost::container::slist test(5, 3);
+      boost::container::slist test2(5, 3, new_allocator<int>());
+      if (test.size() != 5u || test2.size() != 5u || test.front() != 3 || test2.front() != 3) {
+         return 1;
+      }
+   }
 #endif
 
    ////////////////////////////////////
@@ -340,6 +395,13 @@ int main ()
           boost::has_trivial_destructor_after_move<pointer>::value)
          , "has_trivial_destructor_after_move(std::allocator) test failed");
    }
+
+   if(!test_previous())
+      return 1;
+
+   if(!test_insert_after_return< new_allocator<int> >()  ||
+      !test_insert_after_return< node_allocator<int> >() )
+      return 1;
 
    return 0;
 }

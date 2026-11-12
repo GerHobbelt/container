@@ -279,7 +279,11 @@ class list
    //!
    //! <b>Complexity</b>: Linear to the range [first, last).
    template <class InpIt>
-   list(InpIt first, InpIt last, const ValueAllocator &a = ValueAllocator())
+   list(InpIt first, InpIt last, const ValueAllocator &a = ValueAllocator()
+      #if !defined(BOOST_CONTAINER_DOXYGEN_INVOKED)
+      , typename dtl::disable_if_convertible<InpIt, size_type>::type * = 0
+      #endif
+      )
       : AllocHolder(a)
    {  this->insert(this->cbegin(), first, last);  }
 
@@ -1557,14 +1561,14 @@ inline typename list<T, A>::size_type erase_if(list<T, A>& c, Pred pred)
 //! of `InputIterator` and using the default allocator.
 template <typename InputIterator>
 list(InputIterator, InputIterator) ->
-   list<typename iterator_traits<InputIterator>::value_type>;
+   list<typename iter_value<InputIterator>::type>;
 
 //! <b>Deduction guide</b>: allows a `list` to be constructed from the iterator
 //! range <code>[first, last)</code>, deducing the element type from the value type
 //! of `InputIterator` and taking the allocator type from the supplied allocator.
 template <typename InputIterator, typename ValueAllocator>
 list(InputIterator, InputIterator, ValueAllocator const&) ->
-   list<typename iterator_traits<InputIterator>::value_type, ValueAllocator>;
+   list<typename iter_value<InputIterator>::type, ValueAllocator>;
 #endif
 
 #ifndef BOOST_CONTAINER_DOXYGEN_INVOKED

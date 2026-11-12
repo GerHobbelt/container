@@ -205,8 +205,7 @@ struct search_n_shape_check
 // separately, so each shape is driven through both.
 void run_search_n_shapes(const int* vals, std::size_t n, int count, int value)
 {
-   test_detail::for_each_shape_all<int>(vals, n, -999, search_n_shape_check(count, value));
-   test_detail::for_each_shape_all_fwd<int>(vals, n, -999, search_n_shape_check(count, value));
+   test_detail::for_each_shape_all_fwd_and_better<int>(vals, n, -999, search_n_shape_check(count, value));
 }
 
 // Every count from the two dispatch special cases (0, which returns "first"
@@ -429,9 +428,7 @@ struct search_n_comparison_check
 
 void run_search_n_count_shapes(const int* vals, std::size_t n, int count, int value)
 {
-   test_detail::for_each_shape_all<test_detail::counted_int>
-      (vals, n, -999, search_n_comparison_check(count, value));
-   test_detail::for_each_shape_all_fwd<test_detail::counted_int>
+   test_detail::for_each_shape_all_fwd_and_better<test_detail::counted_int>
       (vals, n, -999, search_n_comparison_check(count, value));
 }
 
@@ -472,6 +469,32 @@ void test_search_n_comparison_count()
    }
 }
 
+//A sentinel that does not convert to the iterator: when there is no run the
+//result is the end of the range, also with a trailing partial run
+template<class Cont>
+void test_search_n_sentinel_not_found_cont(Cont& c)
+{
+   //c holds 2 2 1 | 2 2
+   BOOST_TEST(segmented_search_n(c.begin(), test_detail::make_sentinel(c.end()), 3, 2) == c.end());
+   BOOST_TEST(segmented_search_n(c.begin(), test_detail::make_sentinel(c.end()), 9, 2) == c.end());
+   BOOST_TEST(segmented_search_n(c.begin(), test_detail::make_sentinel(c.end()), 2, 7) == c.end());
+   BOOST_TEST(segmented_search_n(c.begin(), test_detail::make_sentinel(c.end()), 1, 7) == c.end());
+}
+
+void test_search_n_sentinel_not_found()
+{
+   int a1[] = {2, 2, 1};
+   int a2[] = {2, 2};
+   test_detail::seg_vector<int> sv;
+   sv.add_segment_range(a1, a1 + 3);
+   sv.add_segment_range(a2, a2 + 2);
+   test_search_n_sentinel_not_found_cont(sv);
+
+   boost::container::vector<int> v(a1, a1 + 3);
+   v.insert(v.end(), a2, a2 + 2);
+   test_search_n_sentinel_not_found_cont(v);
+}
+
 int main()
 {
    test_search_n_shape_matrix();
@@ -491,5 +514,6 @@ int main()
    test_search_n_single_segment_forward();
    test_search_n_forward_run_before_last_segment();
    test_search_n_comparison_count();
+   test_search_n_sentinel_not_found();
    return boost::report_errors();
 }

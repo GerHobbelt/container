@@ -28,7 +28,7 @@
 #include "expand_bwd_test_allocator.hpp"
 #include "expand_bwd_test_template.hpp"
 #include "propagate_allocator_test.hpp"
-#include "void_allocator_test.hpp"
+#include "allocator_test.hpp"
 #include "vector_test.hpp"
 #include "default_init_test.hpp"
 #include "../../intrusive/test/iterator_test.hpp"
@@ -404,6 +404,13 @@ int main()
          return 1;
       }
       if (!(test[0] == 1 && test[1] == 2 && test[2] == 3)) {
+         return 1;
+      }
+   }
+   {
+      boost::container::vector test(5, 3);
+      boost::container::vector test2(5, 3, boost::container::new_allocator<int>());
+      if (test.size() != 5u || test2.size() != 5u || test[4] != 3 || test2[4] != 3) {
          return 1;
       }
    }

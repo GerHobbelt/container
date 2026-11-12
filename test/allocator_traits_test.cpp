@@ -379,6 +379,155 @@ void test_destroy_throwing_destructor()
 
 #endif   //BOOST_NO_EXCEPTIONS
 
+//max_size and select_on_container_copy_construction are inherited from a
+//base class, and max_size does not return size_type
+template<class Derived>
+struct inherited_members_base
+{
+   unsigned max_size() const
+   {  return 77u;  }
+
+   Derived select_on_container_copy_construction() const
+   {  return Derived(-1);  }
+};
+
+template<class T>
+class InheritedMembersAllocator
+   : public inherited_members_base< InheritedMembersAllocator<T> >
+{
+   public:
+   typedef T value_type;
+
+   explicit InheritedMembersAllocator(int id_) : id(id_) {}
+
+   T* allocate(std::size_t n)
+   {  return static_cast<T*>(::operator new(n*sizeof(T)));  }
+
+   void deallocate(T* p, std::size_t)
+   {  ::operator delete(p);  }
+
+   int id;
+};
+
+void test_inherited_members()
+{
+   typedef boost::container::allocator_traits< InheritedMembersAllocator<int> > traits;
+   const InheritedMembersAllocator<int> a(5);
+   BOOST_TEST_EQ(traits::max_size(a), 77u);
+   BOOST_TEST_EQ(traits::select_on_container_copy_construction(a).id, -1);
+}
+
+//An allocator with an unconstrained construct that does not know default_init_t
+template<class T>
+class UnconstrainedConstructAllocator
+{
+   public:
+   typedef T value_type;
+
+   UnconstrainedConstructAllocator() {}
+
+   template<class U>
+   UnconstrainedConstructAllocator(const UnconstrainedConstructAllocator<U> &) {}
+
+   T* allocate(std::size_t n)
+   {  return static_cast<T*>(::operator new(n*sizeof(T)));  }
+
+   void deallocate(T* p, std::size_t)
+   {  ::operator delete(p);  }
+
+   template<class U>
+   void construct(U *p)
+   {  ::new((void*)p) U();  ++construct_calls;  }
+
+   template<class U, class A0>
+   void construct(U *p, const A0 &a0)
+   {  ::new((void*)p) U(a0);  ++construct_calls;  }
+
+   static unsigned construct_calls;
+};
+
+template<class T>
+unsigned UnconstrainedConstructAllocator<T>::construct_calls = 0u;
+
+template<class T, class U>
+bool operator==(const UnconstrainedConstructAllocator<T> &, const UnconstrainedConstructAllocator<U> &)
+{  return true;  }
+
+template<class T, class U>
+bool operator!=(const UnconstrainedConstructAllocator<T> &, const UnconstrainedConstructAllocator<U> &)
+{  return false;  }
+
+//Can be built from any argument, as std::any
+struct constructible_from_any
+{
+   constructible_from_any() : from_arg(false) {}
+
+   template<class X>
+   explicit constructible_from_any(const X &) : from_arg(true) {}
+
+   bool from_arg;
+};
+
+//default_init_t is not passed to an allocator construct that does not know it
+void test_default_init_unconstrained_construct()
+{
+   using namespace boost::container;
+   {
+      typedef UnconstrainedConstructAllocator<int> alloc_t;
+      typedef allocator_traits<alloc_t> traits;
+      alloc_t a;
+      int i;
+      traits::construct(a, &i, default_init);
+      vector<int, alloc_t> v(10u, default_init);
+      BOOST_TEST_EQ(v.size(), 10u);
+   }
+   {
+      typedef UnconstrainedConstructAllocator<constructible_from_any> alloc_t;
+      typedef allocator_traits<alloc_t> traits;
+      alloc_t a;
+      boost::move_detail::aligned_storage<sizeof(constructible_from_any)>::type storage;
+      constructible_from_any *const p = reinterpret_cast<constructible_from_any*>(&storage);
+      alloc_t::construct_calls = 0u;
+      traits::construct(a, p, default_init);
+      BOOST_TEST(!p->from_arg);
+      //A non-trivial type is built by the allocator
+      BOOST_TEST_EQ(alloc_t::construct_calls, 1u);
+      vector<constructible_from_any, alloc_t> v(3u, default_init);
+      BOOST_TEST_EQ(v.size(), 3u);
+      BOOST_TEST(!v[0].from_arg && !v[1].from_arg && !v[2].from_arg);
+   }
+}
+
+struct pointee_class {};
+
+//destroy must compile and be noexcept when the value type is a pointer (a pseudo-destructor call),
+//as in the index of stable_vector, a vector of node pointers.
+void test_destroy_pointer_value_type()
+{
+   typedef pointee_class* ptr_t;
+   typedef boost::container::allocator_traits< SimpleAllocator<ptr_t> >          no_member_traits;
+   typedef boost::container::allocator_traits< NothrowDestroyAllocator<ptr_t> >  nothrow_member_traits;
+   #if !defined(BOOST_NO_CXX11_NOEXCEPT)
+   using boost::move_detail::declval;
+   BOOST_CONTAINER_STATIC_ASSERT(( noexcept(no_member_traits::destroy(declval<SimpleAllocator<ptr_t>&>(), declval<ptr_t*>())) ));
+   BOOST_CONTAINER_STATIC_ASSERT(( noexcept(nothrow_member_traits::destroy(declval<NothrowDestroyAllocator<ptr_t>&>(), declval<ptr_t*>())) ));
+   #endif
+   pointee_class obj;
+   ptr_t p = &obj;
+   SimpleAllocator<ptr_t> a;
+   no_member_traits::destroy(a, &p);
+   NothrowDestroyAllocator<ptr_t> na;
+   nothrow_member_traits::destroy(na, &p);
+   BOOST_TEST(na.destroy_called_);
+   {
+      boost::container::vector<ptr_t> v(3u, p);
+      v.erase(v.begin());
+      v.pop_back();
+      BOOST_TEST_EQ(v.size(), 1u);
+      BOOST_TEST(v[0] == p);
+   }
+}
+
 int main()
 {
    using namespace boost::container::dtl;
@@ -620,6 +769,9 @@ int main()
 
    test_destroy_dispatch();
    test_destroy_throwing_destructor();
+   test_inherited_members();
+   test_default_init_unconstrained_construct();
+   test_destroy_pointer_value_type();
 
    return ::boost::report_errors();
 }

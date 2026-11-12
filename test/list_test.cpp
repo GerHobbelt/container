@@ -17,7 +17,7 @@
 #include "movable_int.hpp"
 #include "list_test.hpp"
 #include "propagate_allocator_test.hpp"
-#include "void_allocator_test.hpp"
+#include "allocator_test.hpp"
 #include "emplace_test.hpp"
 #include "../../intrusive/test/iterator_test.hpp"
 #include "unqualified_swap_test.hpp"
@@ -294,6 +294,13 @@ int main ()
       if (test.front() != 3)
          return 1;
       test.pop_front();
+   }
+   {  //A count and a value: the iterator range guides must not give a hard error
+      boost::container::list test(5, 3);
+      boost::container::list test2(5, 3, new_allocator<int>());
+      if (test.size() != 5u || test2.size() != 5u || test.front() != 3 || test2.front() != 3) {
+         return 1;
+      }
    }
 #endif
 

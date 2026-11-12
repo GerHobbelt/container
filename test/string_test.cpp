@@ -14,7 +14,7 @@
 
 #include <boost/container/vector.hpp>
 #include <boost/container/string.hpp>
-#include "void_allocator_test.hpp"
+#include "allocator_test.hpp"
 #include <boost/container/new_allocator.hpp>
 #include <string>
 #include <vector>
@@ -34,6 +34,7 @@
 #include <boost/utility/string_view.hpp>
 #include "lightweight_test.hpp"
 #include "unqualified_swap_test.hpp"
+#include "shared_input_iterator.hpp"
 #include <boost/core/lightweight_test_trait.hpp>
 #if BOOST_CXX_VERSION >= 201103L
 #include <boost/functional/hash.hpp>
@@ -2499,6 +2500,287 @@ bool test_move_assign_noexcept()
    return true;
 }
 
+//Range functions with a single-pass iterator whose copies share the position
+template<std::size_t N>
+void test_single_pass_iterator_n()
+{
+   typedef boost::container::string bstring;
+   typedef test::shared_input_range<char, N> range_t;
+   int values[N];
+   for(std::size_t i = 0; i != N; ++i)
+      values[i] = int('a' + int(i % 26u));
+   std::string str_values;
+   for(std::size_t i = 0; i != N; ++i)
+      str_values += char(values[i]);
+   const char *const init = "0123456789";
+
+   {  //basic_string(It, It)
+      range_t r(values);
+      const bstring s(r.begin(), r.end());
+      BOOST_TEST(r.read_once());
+      BOOST_TEST(s == str_values.c_str());
+   }
+   {  //basic_string(It, It, alloc)
+      range_t r(values);
+      const bstring s(r.begin(), r.end(), bstring::allocator_type());
+      BOOST_TEST(r.read_once());
+      BOOST_TEST(s == str_values.c_str());
+   }
+   //insert(pos, It, It) in an empty string, at the beginning, in the middle and at the end
+   for(std::size_t n = 0; n != 4; ++n){
+      const std::size_t size = n ? 10u : 0u;
+      const std::size_t pos  = n ? (n - 1u)*5u : 0u;
+      bstring s(init, size);
+      std::string ss(init, size);
+      range_t r(values);
+      s.insert(s.begin() + std::ptrdiff_t(pos), r.begin(), r.end());
+      ss.insert(pos, str_values);
+      BOOST_TEST(r.read_once());
+      BOOST_TEST(s == ss.c_str());
+   }
+   //assign(It, It) and append(It, It) in an empty string and in a string with elements
+   for(std::size_t n = 0; n != 2; ++n){
+      bstring s(init, n*10u);
+      range_t r(values);
+      s.assign(r.begin(), r.end());
+      BOOST_TEST(r.read_once());
+      BOOST_TEST(s == str_values.c_str());
+
+      bstring s2(init, n*10u);
+      std::string ss2(init, n*10u);
+      range_t r2(values);
+      s2.append(r2.begin(), r2.end());
+      ss2.append(str_values);
+      BOOST_TEST(r2.read_once());
+      BOOST_TEST(s2 == ss2.c_str());
+   }
+   //replace(i1, i2, It, It) of an empty, a shorter and a longer range
+   for(std::size_t n = 0; n != 3; ++n){
+      const std::size_t len = n*4u;
+      bstring s(init);
+      std::string ss(init);
+      range_t r(values);
+      s.replace(s.begin() + 2, s.begin() + 2 + std::ptrdiff_t(len), r.begin(), r.end());
+      ss.replace(2u, len, str_values);
+      BOOST_TEST(r.read_once());
+      BOOST_TEST(s == ss.c_str());
+   }
+}
+
+void test_single_pass_iterator()
+{
+   test_single_pass_iterator_n<3u>();
+   test_single_pass_iterator_n<50u>();
+}
+
+//getline of Boost.Container strings with other character types and traits
+struct getline_char_traits : std::char_traits<char> {};
+
+void test_getline_char_types()
+{
+   {
+      std::istringstream is("a\nbc\n\nd");
+      string s;
+      BOOST_TEST(static_cast<bool>(getline(is, s)) && s == "a");
+      BOOST_TEST(static_cast<bool>(getline(is, s)) && s == "bc");
+      BOOST_TEST(static_cast<bool>(getline(is, s)) && s.empty());
+      BOOST_TEST(static_cast<bool>(getline(is, s)) && s == "d" && is.eof());
+      BOOST_TEST(!getline(is, s));
+      std::istringstream is2("x,y");
+      BOOST_TEST(static_cast<bool>(getline(is2, s, ',')) && s == "x");
+   }
+   {
+      std::wistringstream is(L"a\nb,c");
+      wstring s;
+      BOOST_TEST(static_cast<bool>(getline(is, s)) && s == L"a");
+      BOOST_TEST(static_cast<bool>(getline(is, s, L',')) && s == L"b");
+      BOOST_TEST(static_cast<bool>(getline(is, s)) && s == L"c");
+   }
+   {
+      typedef boost::container::basic_string<char, getline_char_traits> traits_string;
+      std::basic_istringstream<char, getline_char_traits> is("p\nq");
+      traits_string s;
+      BOOST_TEST(static_cast<bool>(getline(is, s)) && s == "p");
+      BOOST_TEST(static_cast<bool>(getline(is, s)) && s == "q");
+   }
+}
+
+//Free erase and erase_if also for strings with options
+struct is_digit_pred
+{
+   bool operator()(char c) const {  return c >= '0' && c <= '9';  }
+};
+
+template<class String>
+void test_free_erase_impl()
+{
+   String s("a1b2a3a");
+   BOOST_TEST(boost::container::erase(s, 'a') == 3u);
+   BOOST_TEST(s == "1b23");
+   BOOST_TEST(boost::container::erase_if(s, is_digit_pred()) == 3u);
+   BOOST_TEST(s == "b");
+   BOOST_TEST(boost::container::erase(s, 'z') == 0u);
+   BOOST_TEST(s == "b");
+}
+
+void test_free_erase()
+{
+   typedef boost::container::string_options<boost::container::inline_chars<40> >::type options_t;
+   test_free_erase_impl<string>();
+   test_free_erase_impl< basic_string<char, std::char_traits<char>, void, options_t> >();
+   BOOST_CONTAINER_STATIC_ASSERT((boost::container::is_string
+      < basic_string<char, std::char_traits<char>, void, options_t> >::value));
+}
+
+//operator>> with a streambuf that has no putback position, with a large width
+//and with an exception while the word is stored
+class no_putback_streambuf
+   : public std::streambuf
+{
+   const char *m_p, *m_e;
+
+   public:
+   explicit no_putback_streambuf(const char *str)
+      : m_p(str), m_e(str + std::strlen(str))
+   {}
+
+   protected:
+   //No get area: every character comes from underflow/uflow and pbackfail fails
+   int_type underflow() BOOST_OVERRIDE
+   {  return m_p == m_e ? traits_type::eof() : traits_type::to_int_type(*m_p);  }
+
+   int_type uflow() BOOST_OVERRIDE
+   {  return m_p == m_e ? traits_type::eof() : traits_type::to_int_type(*m_p++);  }
+};
+
+#ifndef BOOST_NO_EXCEPTIONS
+
+//Throws an int when the character at position throw_pos is read
+class throwing_streambuf
+   : public std::streambuf
+{
+   const char *m_p, *m_e, *m_throw;
+
+   public:
+   throwing_streambuf(const char *str, std::size_t throw_pos)
+      : m_p(str), m_e(str + std::strlen(str)), m_throw(str + throw_pos)
+   {}
+
+   protected:
+   int_type underflow() BOOST_OVERRIDE
+   {
+      if(m_p == m_throw)
+         throw 1;
+      return m_p == m_e ? traits_type::eof() : traits_type::to_int_type(*m_p);
+   }
+
+   int_type uflow() BOOST_OVERRIDE
+   {
+      const int_type c = this->underflow();
+      if(!traits_type::eq_int_type(c, traits_type::eof()))
+         ++m_p;
+      return c;
+   }
+};
+
+#endif   //BOOST_NO_EXCEPTIONS
+
+void test_stream_input_extraction()
+{
+   {
+      no_putback_streambuf buf("hello world");
+      std::istream is(&buf);
+      string s;
+      is >> s;
+      BOOST_TEST(s == "hello" && !is.fail());
+      is >> s;
+      BOOST_TEST(s == "world" && !is.fail() && is.eof());
+   }
+   {
+      std::istringstream is("abc def");
+      string s;
+      is.width(std::numeric_limits<std::streamsize>::max());
+      is >> s;
+      BOOST_TEST(s == "abc" && !is.fail() && is.width() == 0);
+   }
+   #ifndef BOOST_NO_EXCEPTIONS
+   {
+      typedef boost::container::string_options
+         < boost::container::stored_size<unsigned char> >::type small_size_options_t;
+      typedef basic_string<char, std::char_traits<char>, void, small_size_options_t> small_string_t;
+      const std::string word(300u, 'x');
+      {
+         std::istringstream is(word);
+         small_string_t s;
+         is >> s;   //length_error when the word is stored: badbit, no exception
+         BOOST_TEST(is.bad());
+      }
+      {
+         std::istringstream is(word);
+         is.exceptions(std::ios_base::badbit);
+         small_string_t s;
+         bool thrown = false;
+         BOOST_CONTAINER_TRY{
+            is >> s;
+         }
+         BOOST_CONTAINER_CATCH(const boost::container::length_error_t &){
+            thrown = true;
+         }
+         BOOST_CONTAINER_CATCH_END
+         BOOST_TEST(thrown && is.bad());
+      }
+   }
+   {  //getline: an exception from the streambuf sets badbit
+      throwing_streambuf buf("abc\ndef", 2u);
+      std::istream is(&buf);
+      string s;
+      getline(is, s);
+      BOOST_TEST(is.bad());
+   }
+   {
+      throwing_streambuf buf("abc\ndef", 2u);
+      std::istream is(&buf);
+      is.exceptions(std::ios_base::badbit);
+      string s;
+      bool thrown = false;
+      BOOST_CONTAINER_TRY{
+         getline(is, s);
+      }
+      BOOST_CONTAINER_CATCH(int){
+         thrown = true;
+      }
+      BOOST_CONTAINER_CATCH_END
+      BOOST_TEST(thrown && is.bad());
+   }
+   #endif
+}
+
+//The string view constructor uses the allocator argument, not the result of
+//select_on_container_copy_construction(), which returns a new allocator here
+void test_string_view_constructor_allocator()
+{
+   typedef test::propagation_test_allocator<char, false, false, false, false, true> new_on_copy_alloc_t;
+   typedef basic_string<char, std::char_traits<char>, new_on_copy_alloc_t> string_t;
+   const new_on_copy_alloc_t a;
+   BOOST_TEST(!(a.select_on_container_copy_construction() == a));
+   const string_t s(boost::string_view("a string longer than the internal buffer of basic_string"), a);
+   BOOST_TEST(s.get_allocator() == a);
+   BOOST_TEST(s == "a string longer than the internal buffer of basic_string");
+}
+
+//The deduction guide with an allocator puts the allocator in the Allocator parameter
+void test_ctad_with_allocator()
+{
+   #ifndef BOOST_CONTAINER_NO_CXX17_CTAD
+   const char chars[] = "hello";
+   new_allocator<char> a;
+   basic_string s(chars, chars + 5, a);
+   BOOST_CONTAINER_STATIC_ASSERT
+      (( dtl::is_same<decltype(s), basic_string<char, std::char_traits<char>, new_allocator<char> > >::value ));
+   BOOST_TEST(s == "hello");
+   #endif
+}
+
 int main()
 {
    if(!test_unqualified_swap())
@@ -2597,6 +2879,18 @@ int main()
 
    if(!test_move_assign_noexcept())
       return 1;
+
+   test_single_pass_iterator();
+
+   test_getline_char_types();
+
+   test_free_erase();
+
+   test_stream_input_extraction();
+
+   test_string_view_constructor_allocator();
+
+   test_ctad_with_allocator();
 
 return boost::report_errors();
 }

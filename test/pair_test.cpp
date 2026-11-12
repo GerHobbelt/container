@@ -32,6 +32,55 @@
 
 using namespace ::boost::container;
 
+//Can be assigned from an int, but not constructed from it
+struct assign_only
+{
+   assign_only() : value(0) {}
+   assign_only &operator=(int v) {  value = v;  return *this;  }
+   int value;
+};
+
+//Assignment from a pair with only one equal member type assigns each member
+void test_heterogeneous_assignment()
+{
+   {
+      dtl::pair<int, assign_only> p;
+      const dtl::pair<int, int> q(1, 7);
+      p = q;
+      BOOST_TEST(p.first == 1 && p.second.value == 7);
+      p = dtl::pair<int, int>(2, 8);
+      BOOST_TEST(p.first == 2 && p.second.value == 8);
+   }
+   {
+      dtl::pair<assign_only, int> p;
+      const dtl::pair<int, int> q(3, 9);
+      p = q;
+      BOOST_TEST(p.first.value == 3 && p.second == 9);
+      p = dtl::pair<int, int>(4, 10);
+      BOOST_TEST(p.first.value == 4 && p.second == 10);
+   }
+}
+
+//A pair with a reference member assigns through the reference
+void test_reference_member_assignment()
+{
+   #if defined(BOOST_CONTAINER_HAS_CONDITIONALLY_TRIVIAL_SPECIAL_MEMBERS)
+   int c = 3, d = 4, e = 5;
+   dtl::pair<int&, int> p1(c, 10), p2(d, 20), p3(e, 30);
+   p1 = p2;
+   BOOST_TEST(c == 4 && d == 4 && p1.second == 20 && &p1.first == &c);
+   p1 = boost::move(p3);
+   BOOST_TEST(c == 5 && e == 5 && p1.second == 30 && &p1.first == &c);
+
+   dtl::pair<int, int&> q1(10, c), q2(20, d);
+   q1 = q2;
+   BOOST_TEST(c == 4 && q1.first == 20 && &q1.second == &c);
+
+   //Without reference members the assignments stay trivial
+   BOOST_CONTAINER_STATIC_ASSERT((boost::move_detail::is_trivially_copyable< dtl::pair<int, int> >::value));
+   #endif
+}
+
 int main ()
 {
    {
@@ -149,5 +198,7 @@ int main ()
       #endif
    }
    #endif   //#!defined(BOOST_NO_CXX11_VARIADIC_TEMPLATES) && !defined(BOOST_NO_CXX11_HDR_TUPLE)
+   test_heterogeneous_assignment();
+   test_reference_member_assignment();
    return ::boost::report_errors();
 }

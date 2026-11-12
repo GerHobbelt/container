@@ -922,6 +922,13 @@ private:
    template <class U, class UA, class UOptions>
    friend class vector;
 
+   //small_vector uses the private members that support an internal buffer
+   template <class U, class USecAlloc, class UOptions>
+   friend class small_vector_base;
+
+   template <class U, std::size_t UN, class UAllocator, class UOptions>
+   friend class small_vector;
+
    #endif   //#ifndef BOOST_CONTAINER_DOXYGEN_INVOKED
    #ifndef BOOST_CONTAINER_DOXYGEN_INVOKED
    private:
@@ -929,7 +936,6 @@ private:
    typedef vector_value_traits<allocator_type> value_traits;
    typedef constant_iterator<T>            cvalue_iterator;
 
-   protected:
 
    inline void steal_resources(vector &x)
    {  return this->m_holder.steal_resources(x.m_holder);   }
@@ -2871,8 +2877,11 @@ private:
       dtl::move_alloc(this->m_holder.alloc(), x.m_holder.alloc(), dtl::bool_<propagate_alloc>());
    }
 
+   //"default_storage" and "default_capacity": buffer the vector uses when it
+   //owns no allocated memory (e.g. the internal buffer of small_vector, as in the constructor)
    template<class OtherA>
-   void priv_move_assign_steal_or_assign(BOOST_RV_REF_BEG vector<T, OtherA, Options> BOOST_RV_REF_END x, dtl::false_type /*data_can_be_always_stolen*/)
+   void priv_move_assign_steal_or_assign(BOOST_RV_REF_BEG vector<T, OtherA, Options> BOOST_RV_REF_END x, dtl::false_type /*data_can_be_always_stolen*/
+                                        , pointer default_storage = pointer(), size_type default_capacity = 0u)
    {
       const bool propagate_alloc = allocator_traits_type::propagate_on_container_move_assignment::value;
       allocator_type& this_alloc = this->m_holder.alloc();
@@ -2888,13 +2897,9 @@ private:
       //Else do a one by one move. Also, clear the source as users find confusing
       //elements are still alive in the source container.
       else {
-         //If the allocator is propagated and is not equal, free memory
-         //with the current allocator and then replace the allocator
-         if (propagate_alloc && !(this_alloc == x_alloc)) {
-            this->clear();
-            this->shrink_to_fit();
-         }
-         dtl::move_alloc(this_alloc, x_alloc, dtl::bool_<propagate_alloc>());
+         typedef dtl::bool_<propagate_alloc> flag_t;
+         this->priv_prepare_storage_for_assign(flag_t(), x_alloc, default_storage, default_capacity);
+         dtl::move_alloc(this_alloc, x_alloc, flag_t());
          this->assign( boost::make_move_iterator(boost::movelib::iterator_to_raw_pointer(x.begin()))
                      , boost::make_move_iterator(boost::movelib::iterator_to_raw_pointer(x.end()))   );
          x.clear();
@@ -2920,6 +2925,25 @@ private:
       this->priv_move_assign_steal_or_assign(boost::move(x), dtl::bool_<data_can_be_always_be_stolen>());
    }
 
+   //If the allocator will be replaced by one that is not equal: destroy the elements,
+   //free the buffer with the current allocator and use the default storage again.
+   //A buffer that the allocator can not propagate (e.g. the internal buffer of
+   //small_vector) was not allocated by it, so it is kept.
+   template<bool Propagate>
+   void priv_prepare_storage_for_assign(dtl::bool_<Propagate>, const allocator_type &new_alloc, pointer default_storage, size_type default_capacity)
+   {
+      if(Propagate && !(this->m_holder.alloc() == new_alloc)){
+         this->clear();
+         const pointer p = this->m_holder.start();
+         if(!allocator_traits_type::storage_is_unpropagable(this->m_holder.alloc(), p)){
+            if(p)
+               this->m_holder.deallocate(p, this->m_holder.capacity());
+            this->m_holder.start(default_storage);
+            this->m_holder.capacity(default_capacity);
+         }
+      }
+   }
+
    template<class OtherA>
    void priv_copy_assign(const vector<T, OtherA, Options> &x
       , typename dtl::enable_if_c
@@ -2943,16 +2967,13 @@ private:
       , dtl::is_version<typename real_allocator<T, OtherA>::type, 0>
       , dtl::is_different<typename real_allocator<T, OtherA>::type, allocator_type>
       >::type
-      priv_copy_assign(const vector<T, OtherA, Options> &x)
+      priv_copy_assign(const vector<T, OtherA, Options> &x, pointer default_storage = pointer(), size_type default_capacity = 0u)
    {
       allocator_type &this_alloc     = this->m_holder.alloc();
       const allocator_type &x_alloc  = x.m_holder.alloc();
       dtl::bool_<allocator_traits_type::
          propagate_on_container_copy_assignment::value> flag;
-      if(flag && this_alloc != x_alloc){
-         this->clear();
-         this->shrink_to_fit();
-      }
+      this->priv_prepare_storage_for_assign(flag, x_alloc, default_storage, default_capacity);
       dtl::assign_alloc(this_alloc, x_alloc, flag);
       this->assign( x.priv_raw_begin(), x.priv_raw_end() );
    }
@@ -2979,7 +3000,6 @@ private:
       dtl::swap_alloc(this->m_holder.alloc(), x.m_holder.alloc(), flag);
    }
 
-   protected:
    //Swap for small_vectors, whose internal buffer can't be transferred (not "propagable").
    //"internal_capacity" is the capacity of the internal buffer of both vectors if known,
    //(including 0) or 0 if unknown (small_vector_base)
@@ -2994,7 +3014,7 @@ private:
    //  it: the allocators are swapped (propagate_on_container_swap), or they are always equal,
    //  or they compare equal.
    template<class Vector>  //Template it to avoid it in explicit instantiations
-   void prot_swap_small(Vector &x, std::size_t internal_capacity)  //version_N
+   void priv_swap_small(Vector &x, std::size_t internal_capacity)  //version_N
    {
       if (BOOST_UNLIKELY(&x == this)){
          return;
@@ -3288,8 +3308,7 @@ private:
    inline dtl::insert_value_initialized_n_proxy<allocator_type> priv_resize_proxy(value_init_t)
    {  return dtl::insert_value_initialized_n_proxy<allocator_type>(); }
 
-   protected:
-   void prot_shrink_to_fit_small(pointer const small_buffer, const size_type small_capacity)
+   void priv_shrink_to_fit_small(pointer const small_buffer, const size_type small_capacity)
    {
       const size_type cp = this->m_holder.capacity();
       if (cp && this->m_holder.m_start != small_buffer) {   //Do something only if a dynamic buffer is used

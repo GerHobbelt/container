@@ -322,7 +322,7 @@ void test_remove_single_segment_seg2_both()
 // Shape matrix.
 //
 // segmented_remove is in place, so there is only one range and
-// for_each_shape_all is the right combinator: the six branch specs over
+// for_each_shape_all_bidir_and_better is the right combinator: the six branch specs over
 // both segmentation depths.
 //
 // What can be asserted after the call is the returned new logical end, the
@@ -380,7 +380,7 @@ void test_remove_shape_matrix()
          const std::size_t n = sizes[i];
          if(n > set_len[s])
             continue;
-         test_detail::for_each_shape_all<int>
+         test_detail::for_each_shape_all_fwd_and_better<int>
             (sets[s], n, shape_filler, remove_shape_check());
       }
    }
@@ -426,10 +426,37 @@ void test_remove_comparison_count()
          const std::size_t n = sizes[i];
          if(n > set_len[s])
             continue;
-         test_detail::for_each_shape_all<test_detail::counted_int>
+         test_detail::for_each_shape_all_fwd_and_better<test_detail::counted_int>
             (sets[s], n, shape_filler, remove_comparison_check());
       }
    }
+}
+
+//A sentinel that does not convert to the iterator: with no match the result
+//is the end of the range and the elements do not change
+template<class Cont>
+void test_remove_sentinel_no_match_cont(Cont& c)
+{
+   BOOST_TEST(segmented_remove(c.begin(), test_detail::make_sentinel(c.end()), 2) == c.end());
+   int expected[] = {1, 3, 5, 7, 9};
+   int i = 0;
+   for(typename Cont::iterator it = c.begin(); it != c.end(); ++it, ++i)
+      BOOST_TEST_EQ(*it, expected[i]);
+   BOOST_TEST_EQ(i, 5);
+}
+
+void test_remove_sentinel_no_match()
+{
+   int a1[] = {1, 3, 5};
+   int a2[] = {7, 9};
+   test_detail::seg_vector<int> sv;
+   sv.add_segment_range(a1, a1 + 3);
+   sv.add_segment_range(a2, a2 + 2);
+   test_remove_sentinel_no_match_cont(sv);
+
+   boost::container::vector<int> v(a1, a1 + 3);
+   v.insert(v.end(), a2, a2 + 2);
+   test_remove_sentinel_no_match_cont(v);
 }
 
 int main()
@@ -454,5 +481,6 @@ int main()
    test_remove_movable_seg2();
    test_remove_shape_matrix();
    test_remove_comparison_count();
+   test_remove_sentinel_no_match();
    return boost::report_errors();
 }
